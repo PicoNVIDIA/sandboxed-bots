@@ -1,0 +1,9 @@
+# never commit
+secrets/
+*.key
+.env
+data/
+backup/
+*.bak
+*.stale
+baseline-*.txt
