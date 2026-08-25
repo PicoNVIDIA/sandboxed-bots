@@ -1,0 +1,20 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+#
+# Tiny socat relay.
+#
+# Why this exists: a sandbox has its own network namespace, so it cannot reach a
+# service bound to 127.0.0.1 on the host. If your inference server (or any host
+# service an agent needs) listens only on loopback, run this to republish it on
+# the OpenShell bridge, where sandboxes can see it.
+#
+#   docker build -f Dockerfile.relay -t hermes-swarm-relay:base .
+#   docker run -d --name relay-inference --network host --restart unless-stopped \
+#     hermes-swarm-relay:base \
+#     socat TCP-LISTEN:18001,fork,reuseaddr,bind=<BRIDGE_IP> TCP:127.0.0.1:8000
+#
+# Find <BRIDGE_IP> with:
+#   docker network inspect openshell-docker \
+#     --format '{{range .IPAM.Config}}{{.Gateway}}{{end}}'
+FROM alpine:3.20
+RUN apk add --no-cache socat

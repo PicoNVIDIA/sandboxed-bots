@@ -1,0 +1,40 @@
+"""Tool schemas for peer-messaging — what the LLM sees."""
+
+MESSAGE_TEAMMATE = {
+    "name": "message_teammate",
+    "description": (
+        "Send a message DIRECTLY to a teammate bot running on another machine or "
+        "in another sandbox, and get their reply back. Use this to delegate work, "
+        "ask for a second opinion, request a critique, or hand off a task. "
+        "The teammate runs a full agent turn on their own hardware with their own "
+        "tools and memory, then their answer is returned to you. "
+        "Call list_teammates first if you are unsure who is reachable. "
+        "Be specific in your message — the teammate does not see this conversation."
+    ),
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "teammate": {
+                "type": "string",
+                "description": "Name of the teammate to message (e.g. 'beta'). Use list_teammates to see options.",
+            },
+            "message": {
+                "type": "string",
+                "description": (
+                    "The full message to send. Include all context the teammate needs — "
+                    "they cannot see your conversation history."
+                ),
+            },
+        },
+        "required": ["teammate", "message"],
+    },
+}
+
+LIST_TEAMMATES = {
+    "name": "list_teammates",
+    "description": (
+        "List the teammate bots you can reach with message_teammate. "
+        "Returns each teammate's name and a short note about their role."
+    ),
+    "parameters": {"type": "object", "properties": {}},
+}

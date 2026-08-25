@@ -1,0 +1,47 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+#
+# Sandbox base image for a Hermes agent.
+#
+# Every requirement below is load-bearing — each one was a hard failure during
+# development, not a precaution. Read the comments before removing anything.
+FROM ubuntu:24.04
+ENV DEBIAN_FRONTEND=noninteractive
+
+# The Hermes installer needs all of these:
+#   python3.11        - otherwise the installer asks uv to download a standalone
+#                       CPython from GitHub releases, which a deny-by-default
+#                       egress policy blocks
+#   xz-utils          - to extract the Node.js tarball
+#   libatomic1        - node fails at runtime without it:
+#                       "libatomic.so.1: cannot open shared object file"
+#   build-essential   - node-pty is compiled from source
+# The sandbox cannot apt-get these later: the egress proxy blocks the mirrors.
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        software-properties-common ca-certificates curl gnupg \
+ && add-apt-repository -y ppa:deadsnakes/ppa \
+ && apt-get update && apt-get install -y --no-install-recommends \
+        python3.11 python3.11-venv python3.11-dev \
+        python3 python3-venv python3-pip \
+        git jq iproute2 sudo xz-utils libatomic1 build-essential \
+ && rm -rf /var/lib/apt/lists/*
+
+# REQUIRED: a user and group literally named "sandbox". Without it sandbox
+# creation fails with: sandbox user 'sandbox' not found in image
+RUN groupadd -g 2000 sandbox \
+ && useradd -u 2000 -g 2000 -m -s /bin/bash sandbox \
+ && mkdir -p /sandbox && chown -R sandbox:sandbox /sandbox
+
+# HOME must be /sandbox, not /home/sandbox. Under Landlock, /home/sandbox is not
+# writable even when `ls -ld` shows it owned by the sandbox user — a genuinely
+# confusing failure that looks like a permissions bug.
+ENV HOME=/sandbox
+ENV HERMES_HOME=/sandbox/.hermes
+WORKDIR /sandbox
+
+# The container must not exit. OpenShell injects its own entrypoint, so a bash
+# entrypoint that returns yields:
+#   ContainerRestarting: Container is restarting after a failure
+# It also means `sandbox exec ... -- bash` is parsed by a shell rather than by an
+# application entrypoint.
+CMD ["sleep", "infinity"]

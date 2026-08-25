@@ -1,0 +1,102 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+#
+# Base egress policy for one Hermes agent sandbox.
+#
+# spawn-agent.sh generates a concrete copy of this per agent. Edit this template
+# to change the default posture for every future agent.
+#
+# ── The two rules that trip everyone up ─────────────────────────────────────
+#
+# 1. `version: 3` is mandatory. Without it the policy is rejected with:
+#       failed to parse sandbox policy YAML: missing field 'version'
+#
+# 2. network_policies bind to BINARY PATHS as well as hosts. Allowlisting a host
+#    is NOT enough — the program making the call must be in `binaries` too.
+#    Real example: with pypi.org allowed, `curl` got 200 while `uv` got 403,
+#    purely because only curl was listed.
+#
+# Debugging ladder for a blocked request from inside a sandbox:
+#    403 → policy denied it (host not allowed, or calling binary not listed)
+#    502 → policy allowed it, but nothing is listening (usually a service bound
+#          to 127.0.0.1 on the host — a sandbox cannot reach host loopback)
+#    401 → you reached the target; the credential is wrong
+#    200 → working
+version: 3
+
+filesystem_policy:
+  include_workdir: true
+  read_only:
+    - /usr
+    - /lib
+    - /etc
+    - /dev/urandom
+  read_write:
+    - /sandbox
+    - /sandbox/.hermes
+    - /tmp
+    - /var/tmp
+    - /dev/null
+    - /dev/pts
+    - /home/sandbox
+
+landlock:
+  compatibility: best_effort
+
+network_policies:
+  # The agent's inference endpoint. spawn-agent.sh rewrites the port.
+  # host.openshell.internal is the OpenShell docker bridge — NOT 172.17.0.1.
+  inference:
+    name: inference
+    endpoints:
+      - { host: host.openshell.internal, port: 18001, tls: skip }
+    binaries: &agent_binaries
+      - { path: /usr/bin/python3 }
+      - { path: /usr/bin/python3.11 }
+      - { path: /usr/bin/curl }
+      - { path: /usr/bin/git }
+      - { path: /sandbox/.hermes/hermes-agent/venv/bin/python }
+      - { path: /sandbox/.hermes/hermes-agent/venv/bin/* }
+      - { path: /sandbox/.hermes/bin/uv }
+      - { path: /sandbox/.hermes/bin/* }
+      - { path: /sandbox/.hermes/node/bin/node }
+      - { path: /sandbox/.hermes/node/bin/npm }
+      - { path: /bin/sh }
+      - { path: /bin/bash }
+
+  # Hosts the Hermes installer needs. You can remove this group after the agent
+  # is built, at the cost of not being able to update Hermes in place.
+  #
+  # NOTE ON REDIRECTS: an HTTP redirect is evaluated as a separate decision, so
+  # `curl -L https://astral.sh/...` fails even with astral.sh allowed, because it
+  # redirects to releases.astral.sh. Both are listed below.
+  install:
+    name: install
+    endpoints:
+      - { host: hermes-agent.nousresearch.com, port: 443, tls: skip }
+      - { host: github.com, port: 443, tls: skip }
+      - { host: codeload.github.com, port: 443, tls: skip }
+      - { host: objects.githubusercontent.com, port: 443, tls: skip }
+      - { host: raw.githubusercontent.com, port: 443, tls: skip }
+      - { host: api.github.com, port: 443, tls: skip }
+      - { host: pypi.org, port: 443, tls: skip }
+      - { host: files.pythonhosted.org, port: 443, tls: skip }
+      - { host: astral.sh, port: 443, tls: skip }
+      - { host: releases.astral.sh, port: 443, tls: skip }
+      - { host: registry.npmjs.org, port: 443, tls: skip }
+      - { host: nodejs.org, port: 443, tls: skip }
+      - { host: deb.debian.org, port: 443, tls: skip }
+      - { host: archive.ubuntu.com, port: 443, tls: skip }
+      - { host: security.ubuntu.com, port: 443, tls: skip }
+    binaries: *agent_binaries
+
+  # Teammate api_servers are added here by spawn-agent.sh, one group per peer:
+  #
+  #   peer-<name>:
+  #     name: peer-<name>
+  #     endpoints:
+  #       - { host: host.openshell.internal, port: <their api port>, tls: skip }
+  #     binaries: *agent_binaries
+  #
+  # Watch the direction: agent A's peer-B group must allow B's port, not A's own.
+  # Getting that backwards produces a 403 that reads like an auth failure.

@@ -1,0 +1,7 @@
+name: peer-messaging
+version: 1.0.0
+description: Message a teammate bot directly and get their reply
+author: Patrick Moorhead
+provides_tools:
+- message_teammate
+- list_teammates
