@@ -91,17 +91,31 @@ echo
 # ── inference endpoint ──────────────────────────────────────────────────────
 echo "Inference endpoint"
 if [[ -n "${INFERENCE_URL:-}" ]]; then
+  # host.openshell.internal resolves only INSIDE a sandbox, so testing it from the
+  # host is meaningless. Rewrite it to the bridge IP for a host-side reachability
+  # check, and tell the user that is what we did.
+  probe_url="${INFERENCE_URL%/}/models"
+  probe_note=""
+  if [[ "$probe_url" == *host.openshell.internal* ]]; then
+    br=$(docker network inspect openshell-docker \
+           --format '{{range .IPAM.Config}}{{.Gateway}}{{end}}' 2>/dev/null || true)
+    if [[ -n "$br" ]]; then
+      probe_url="${probe_url//host.openshell.internal/$br}"
+      probe_note=" (probed via bridge $br; the name itself only resolves inside a sandbox)"
+    fi
+  fi
   code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 10 \
            ${INFERENCE_KEY:+-H "Authorization: Bearer $INFERENCE_KEY"} \
-           "${INFERENCE_URL%/}/models" 2>/dev/null || echo 000)
+           "$probe_url" 2>/dev/null) || code=000
+  code="${code:-000}"
   case "$code" in
-    200) ok "endpoint answers 200 from the host" ;;
+    200)     ok "endpoint answers 200${probe_note}" ;;
     401|403) bad "endpoint returned $code" "INFERENCE_KEY looks wrong" ;;
-    000) bad "endpoint unreachable from the host" \
-             "check INFERENCE_URL. NOTE: a sandbox cannot reach 127.0.0.1 on the
-       host — if your server binds loopback, use scripts/01-build-image.sh's
-       relay (see README 'The bridge, not loopback')" ;;
-    *)   note "endpoint returned $code" "expected 200 from ${INFERENCE_URL%/}/models" ;;
+    000)     bad "endpoint unreachable at $probe_url" \
+                 "check INFERENCE_URL. If your server binds 127.0.0.1 on the host, a
+       sandbox cannot reach it — republish it on the bridge with the relay from
+       scripts/01-build-image.sh (see README 'The bridge, not loopback')" ;;
+    *)       note "endpoint returned $code" "expected 200 from $probe_url" ;;
   esac
 else
   bad "cannot test the endpoint" "INFERENCE_URL is not set"

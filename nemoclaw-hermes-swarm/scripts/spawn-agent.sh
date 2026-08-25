@@ -43,6 +43,18 @@ BRIDGE="${BRIDGE:-$(docker network inspect openshell-docker \
 
 mkdir -p "$LOG_DIR" "$SECRETS_DIR" "$POLICY_DIR"
 
+# Fail fast with a clear message rather than dying halfway through a spawn.
+need_cfg() {
+  local missing=()
+  [[ -n "$INFERENCE_URL" ]]   || missing+=(INFERENCE_URL)
+  [[ -n "$INFERENCE_MODEL" ]] || missing+=(INFERENCE_MODEL)
+  if [[ ${#missing[@]} -gt 0 ]]; then
+    printf '  \033[31mFAIL\033[0m missing required config: %s\n' "${missing[*]}" >&2
+    printf '     → cp .env.example .env and edit it, then re-run\n' >&2
+    exit 1
+  fi
+}
+
 log()  { printf "\033[36m==>\033[0m %s\n" "$*"; }
 ok()   { printf "  \033[32mok\033[0m   %s\n" "$*"; }
 warn() { printf "  \033[33mwarn\033[0m %s\n" "$*"; }
@@ -114,6 +126,7 @@ if [[ $LIST -eq 1 ]]; then
 fi
 
 [[ -n "$NAME" ]] || die "need --name"
+[[ $DESTROY -eq 1 ]] || need_cfg
 [[ "$NAME" =~ ^[a-z][a-z0-9-]*$ ]] || die "name must be lowercase alnum/dash"
 
 SB="bot-$NAME"
@@ -228,7 +241,7 @@ fi
 
 # ── 2. policy ───────────────────────────────────────────────────────────────
 log "writing policy"
-mkdir -p "$POC/secrets"
+mkdir -p "$SECRETS_DIR"
 POL="$POLICY_DIR/policy-$SB.yaml"
 python3 - "$POL" "$INFER_PORT" <<'PY'
 import sys, yaml
@@ -448,7 +461,7 @@ for a in $(existing_agents); do
   # allow each direction through the sandbox egress policy
   for pair in "$SB|$a|$a_port" "bot-$a|$NAME|$API_PORT"; do
     IFS='|' read -r sb peer port <<<"$pair"
-    tmp="$POC/.peer-$sb-$peer.yaml"
+    tmp="$POLICY_DIR/.peer-$sb-$peer.yaml"
     python3 - "$tmp" "$peer" "$port" <<'PYPOL'
 import sys, yaml
 out, peer, port = sys.argv[1], sys.argv[2], int(sys.argv[3])
