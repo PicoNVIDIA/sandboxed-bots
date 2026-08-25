@@ -163,6 +163,7 @@ full agent turn and returns its answer.
 | `scripts/01-build-image.sh` | Build the sandbox base image |
 | `scripts/spawn-agent.sh` | Add / list / destroy an agent |
 | `scripts/start-swarm.sh` | Restore everything after a reboot (idempotent) |
+| `scripts/fix-desktop-backends.sh` | Repair orphaned/dead desktop backends when a bot goes silent |
 | `scripts/e2e-test.sh` | Full verification suite |
 
 ### Managing agents
@@ -211,13 +212,18 @@ with every tool broken. `e2e-test.sh` checks evidence instead:
 | Symptom | Cause |
 |---|---|
 | Agent works via CLI but is missing from the desktop roster | No host-side gateway — see "two gateways" above |
+| One bot silently receives nothing in group chat while others reply | Orphaned desktop backend from a previous app session — run `./scripts/fix-desktop-backends.sh`, then restart the app |
+| A bot replies `(pass)` | Working as designed: the room rules say pass rather than repeat a point |
+| A chained task (`@a research, @b summarize`) stalls forever | The first agent in the chain never received the message; the rest are correctly waiting |
 | Desktop shows nothing at all | `connections.json` is read only at app launch; fix it, *then* restart |
 | `403` from inside a sandbox | Policy denied it — host not allowed, or the calling binary is not in `binaries` |
 | `502` from inside a sandbox | Policy allowed it, but nothing is listening — usually a loopback-bound service |
 | Spawn hangs with an empty `/sandbox/.hermes` | Install step stalled; see `docs/troubleshooting.md` for the recovery |
 | A bot stays silent in group chat | Often correct — room rules say reply only with something new to add |
 
-Full details in [docs/troubleshooting.md](docs/troubleshooting.md).
+Full details in [docs/troubleshooting.md](docs/troubleshooting.md), and for the
+desktop group chat specifically — silent agents, orphaned backends, deadlocked
+chain tasks — see [docs/group-chat-troubleshooting.md](docs/group-chat-troubleshooting.md).
 
 ## Repository layout
 
