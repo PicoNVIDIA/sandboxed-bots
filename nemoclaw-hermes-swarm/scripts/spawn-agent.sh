@@ -299,11 +299,15 @@ log "creating sandbox $SB (can take ~2 min)"
 if openshell sandbox list 2>/dev/null | grep -qE "^\s*$SB\s"; then
   warn "$SB already exists — reusing"
 else
-  openshell sandbox create --name "$SB" --from $SANDBOX_IMAGE \
-    --policy "$POL" --memory 8Gi --cpu 4 >/dev/null 2>&1 || true
+  # BOUND THIS. `openshell sandbox create` can block long after the sandbox is
+  # actually Ready — observed sitting 7+ minutes on an already-Ready sandbox.
+  # We do not need it to return: the readiness poll below is the real gate.
+  timeout 180 openshell sandbox create --name "$SB" --from "$SANDBOX_IMAGE" \
+    --policy "$POL" --memory "$SANDBOX_MEMORY" --cpu "$SANDBOX_CPU" >/dev/null 2>&1 || true
 fi
 for i in $(seq 1 24); do
-  phase=$(openshell sandbox list 2>/dev/null | awk -v n="$SB" '$1==n{print $NF}' | sed -r 's/\x1B\[[0-9;]*[mK]//g')
+  phase=$(openshell sandbox list 2>/dev/null | sed -r 's/\x1B\[[0-9;]*[mK]//g' \
+            | awk -v n="$SB" '$1==n{print $NF}')
   [[ "$phase" == "Ready" ]] && { ok "$SB Ready"; break; }
   sleep 10
 done
@@ -442,9 +446,9 @@ ok "model -> :$INFER_PORT, api_server :$API_PORT, SOUL written"
 
 # ── 6. gateway + forward ────────────────────────────────────────────────────
 log "starting in-sandbox gateway"
-# A gateway already running from a previous attempt holds the OLD API_SERVER_KEY in
-# memory, so a re-run that regenerates the key gets 401 until it is restarted.
-# Stop any existing one first — this is what makes re-runs actually idempotent.
+# ALWAYS restart it here, even on a first run. The gateway reads API_SERVER_KEY at
+# startup, so one started before the key was written serves a stale value and every
+# peer call returns 401 with correct-looking keys on disk. Observed exactly that.
 timeout 120 openshell sandbox exec -n "$SB" --timeout 90 -- /bin/sh -c \
   'export HOME=/sandbox HERMES_HOME=/sandbox/.hermes
    /sandbox/.hermes/hermes-agent/venv/bin/python -m hermes_cli.main gateway stop >/dev/null 2>&1 || true
