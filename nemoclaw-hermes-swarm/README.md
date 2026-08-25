@@ -45,26 +45,65 @@ What you get:
 
 ## Scope
 
-**In scope:** Hermes agent setup, sandbox isolation, egress policy, the peer mesh,
-desktop wiring, and the lifecycle scripts.
+This example stands up one or more Hermes agents, each in its own OpenShell
+sandbox, wires them into a peer mesh, and makes them visible to the Hermes
+desktop app.
 
-**Out of scope:** deploying an inference server. This example assumes you already
-have an OpenAI-compatible endpoint — vLLM, SGLang, NIM, or a hosted API. You
-supply its URL and key.
+It does not:
+
+- deploy or manage an inference server
+- provision GPUs or a model
+- create the OpenShell gateway for you
+- configure messaging platforms (Slack, Outlook, etc.)
+
+You supply one OpenAI-compatible inference endpoint reachable from the sandboxes —
+vLLM, SGLang, NIM, or a hosted API — via `.env`.
+
+## Provenance and support
+
+Independent community contribution. Not a supported part of NemoClaw core; its
+placement in the catalog aids discovery and does not imply NVIDIA support or a
+readiness guarantee. Operators remain responsible for their own credentials,
+endpoint availability, and any production hardening.
 
 ## Prerequisites
 
-<!-- VERIFY: fill from the version-audit subagent before publishing -->
+Versions below are what this example was developed and verified against. Nearby
+versions will likely work; these are the ones actually tested.
 
-| Requirement | Notes |
-|---|---|
-| Linux host with Docker | The OpenShell Docker compute driver is what these sandboxes run on |
-| OpenShell CLI + a running gateway | `openshell gateway list` must show an active gateway |
-| An OpenAI-compatible inference endpoint | Reachable from the host; you provide URL + key |
-| Hermes Agent on the host | Provides the `hermes` CLI used to create profiles |
-| Hermes desktop app *(optional)* | Only needed for the group-chat / roster experience |
+| Requirement | Verified with | Notes |
+|---|---|---|
+| Linux host with Docker | Docker 29.6.2 | Compose v2 (`docker compose`) — the legacy `docker-compose` binary is not used |
+| OpenShell CLI + active gateway | openshell 0.0.85 | `openshell gateway list` must show a gateway marked `*` |
+| NemoClaw CLI *(strongly recommended)* | nemoclaw v0.0.97 | Makes policy edits **additive**. Without it, policy changes use `openshell policy set`, which **replaces** a sandbox's entire policy |
+| Hermes Agent on the host | v0.20.5, Python 3.11 | Provides the `hermes` CLI for profiles and gateways |
+| An OpenAI-compatible endpoint | any | You supply URL, model name, and key via `.env` |
+| Hermes desktop app *(optional)* | — | Only for the Bots roster and group chat |
+
+Sandbox image: **Ubuntu 24.04** with **Python 3.11** (from the deadsnakes PPA).
+Policy schema: **`version: 3`**.
 
 You do **not** need a GPU on the host if your inference endpoint is remote.
+
+### A PATH gotcha worth knowing up front
+
+`openshell`, `nemoclaw`, and `hermes` typically install into `~/.local/bin`, which
+is added by `~/.profile` — a file that a **non-login** shell does not read. So this
+fails:
+
+```console
+$ ssh yourhost 'openshell --version'
+bash: line 1: openshell: command not found
+```
+
+Use a login shell for remote invocations, and note that the Hermes desktop app
+probes the host with `bash -lc 'command -v hermes'` for exactly this reason:
+
+```bash
+ssh yourhost 'bash -lc "openshell --version"'
+```
+
+`scripts/00-preflight.sh` checks this for you.
 
 ## Quickstart
 
