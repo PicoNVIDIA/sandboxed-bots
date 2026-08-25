@@ -36,6 +36,11 @@ INFERENCE_URL="${INFERENCE_URL:-}"
 INFERENCE_MODEL="${INFERENCE_MODEL:-}"
 INFERENCE_KEY="${INFERENCE_KEY:-local-noauth}"
 
+# Only used by the optional --new-engine path, which starts a local vLLM. This
+# example assumes you already have an endpoint, so these are normally empty.
+MODEL_PATH="${MODEL_PATH:-}"
+MODEL_NAME="${MODEL_NAME:-$INFERENCE_MODEL}"
+
 # The OpenShell docker bridge. This is what host.openshell.internal resolves to
 # inside a sandbox, and it is NOT the default docker bridge (172.17.0.1).
 BRIDGE="${BRIDGE:-$(docker network inspect openshell-docker \
@@ -184,6 +189,7 @@ fi
 # Engine: SHARE an existing one by default (agent-only spawn, no GPU, no ~11min
 # model load). Only start a dedicated vLLM when --new-engine is passed.
 if [[ $NEW_ENGINE -eq 1 ]]; then
+  [[ -n "$MODEL_PATH" ]] || die "--new-engine needs MODEL_PATH set (path to your model weights)"
   GPU=$(free_gpu || true)
   [[ -n "$GPU" ]] || die "no free GPU for --new-engine (drop the flag to share)"
   VLLM_PORT=$(next_port 8003)
@@ -308,20 +314,76 @@ sbexec() { timeout "${2:-400}" openshell sandbox exec -n "$SB" --timeout "$((${2
 
 # ── 4. Hermes inside the sandbox ────────────────────────────────────────────
 log "installing Hermes in $SB"
+
+# Seed from an already-built sandbox when one exists.
+#
+# Why: the installer clones from GitHub, and every sandbox egresses through the
+# OpenShell proxy, so they share one apparent source address. Creating two or
+# three agents back to back reliably trips GitHub's unauthenticated rate limit:
+#   remote: This request was rate-limited due to too many requests.
+#   fatal: ... returned error: 429   ->   "✗ Failed to clone repository"
+# Copying the installed tree sidesteps the clone entirely and is much faster.
+seed_from_sibling() {
+  local src_sb="" a
+  for a in $(existing_agents); do
+    [[ "$a" == "$NAME" ]] && continue
+    if timeout 90 openshell sandbox exec -n "bot-$a" --timeout 70 -- /bin/sh -c \
+         'test -x /sandbox/.hermes/hermes-agent/venv/bin/python && echo yes' 2>/dev/null \
+         | grep -q yes; then
+      src_sb="bot-$a"; break
+    fi
+  done
+  [[ -n "$src_sb" ]] || return 1
+
+  local src_ctr dst_ctr stage
+  src_ctr=$(docker ps --format '{{.Names}}' | grep "^openshell-${src_sb}-" | head -1)
+  dst_ctr=$(docker ps --format '{{.Names}}' | grep "^openshell-${SB}-" | head -1)
+  [[ -n "$src_ctr" && -n "$dst_ctr" ]] || return 1
+
+  log "seeding Hermes from $src_sb (avoids a GitHub clone)"
+  timeout 600 openshell sandbox exec -n "$src_sb" --timeout 550 -- /bin/sh -c \
+    'cd /sandbox && tar czf /tmp/hermes-seed.tgz .hermes/hermes-agent .hermes/bin .hermes/node 2>/dev/null; echo done' \
+    >/dev/null 2>&1 || return 1
+
+  stage=$(mktemp -d)
+  docker cp "$src_ctr:/tmp/hermes-seed.tgz" "$stage/seed.tgz" >/dev/null 2>&1 || { rm -rf "$stage"; return 1; }
+  docker cp "$stage/seed.tgz" "$dst_ctr:/tmp/hermes-seed.tgz" >/dev/null 2>&1 || { rm -rf "$stage"; return 1; }
+  rm -rf "$stage"
+
+  timeout 600 openshell sandbox exec -n "$SB" --timeout 550 -- /bin/sh -c \
+    'cd /sandbox && mkdir -p .hermes && tar xzf /tmp/hermes-seed.tgz -C /sandbox
+     test -x /sandbox/.hermes/hermes-agent/venv/bin/python && echo SEED-OK' 2>/dev/null \
+    | grep -q SEED-OK
+}
+
 if sbexec 'test -x /sandbox/.hermes/hermes-agent/venv/bin/python && echo yes' 120 | grep -q yes; then
   ok "Hermes already installed"
+elif seed_from_sibling; then
+  ok "Hermes seeded from an existing sandbox"
 else
   sbexec 'export HOME=/sandbox HERMES_HOME=/sandbox/.hermes
           cd /sandbox
           curl -fsSL https://hermes-agent.nousresearch.com/install.sh | bash >/sandbox/install.log 2>&1
           test -x /sandbox/.hermes/hermes-agent/venv/bin/python && echo INSTALL-OK || tail -5 /sandbox/install.log' 1700 | tail -3
-  sbexec 'test -x /sandbox/.hermes/hermes-agent/venv/bin/python && echo yes' 120 | grep -q yes \
-    || die "Hermes install failed — check /sandbox/install.log in $SB"
+  if ! sbexec 'test -x /sandbox/.hermes/hermes-agent/venv/bin/python && echo yes' 120 | grep -q yes; then
+    # Surface the real cause instead of a generic failure — 429 is the common one.
+    if sbexec 'grep -qi "rate-limited\|error: 429" /sandbox/install.log && echo ratelimited' 120 | grep -q ratelimited; then
+      die "Hermes install hit a GitHub rate limit (429) in $SB.
+     → wait a few minutes and re-run this command, or create the first agent,
+       let it finish, then create the rest so they can be seeded from it."
+    fi
+    die "Hermes install failed — inspect /sandbox/install.log in $SB"
+  fi
   ok "Hermes installed"
 fi
 
 # ── 5. model + api_server + SOUL ────────────────────────────────────────────
 log "configuring agent"
+# Reuse the stored key if we already have one: regenerating it invalidates every
+# peer registration that other agents hold for us.
+if [[ -z "${KEY:-}" && -s "$SECRETS_DIR/$NAME.key" ]]; then
+  KEY=$(cat "$SECRETS_DIR/$NAME.key")
+fi
 KEY="${KEY:-$(openssl rand -hex 32)}"
 printf '%s\n' "$KEY" > "$SECRETS_DIR/$NAME.key"; chmod 600 "$SECRETS_DIR/$NAME.key"
 
@@ -380,6 +442,13 @@ ok "model -> :$INFER_PORT, api_server :$API_PORT, SOUL written"
 
 # ── 6. gateway + forward ────────────────────────────────────────────────────
 log "starting in-sandbox gateway"
+# A gateway already running from a previous attempt holds the OLD API_SERVER_KEY in
+# memory, so a re-run that regenerates the key gets 401 until it is restarted.
+# Stop any existing one first — this is what makes re-runs actually idempotent.
+timeout 120 openshell sandbox exec -n "$SB" --timeout 90 -- /bin/sh -c \
+  'export HOME=/sandbox HERMES_HOME=/sandbox/.hermes
+   /sandbox/.hermes/hermes-agent/venv/bin/python -m hermes_cli.main gateway stop >/dev/null 2>&1 || true
+   rm -f /sandbox/.hermes/gateway.pid /sandbox/.hermes/gateway.lock' >/dev/null 2>&1 || true
 mkdir -p "$LOG_DIR"
 pkill -f "sandbox exec -n $SB .* gateway run" 2>/dev/null || true
 nohup setsid openshell sandbox exec -n "$SB" --timeout 0 -- /bin/sh -c \
