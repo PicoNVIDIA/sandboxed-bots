@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
 # fix-desktop-backends.sh — repair the desktop backend layer.
 #
 # Symptom this fixes: one or more bots silently receive nothing in a group chat

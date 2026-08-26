@@ -1,232 +1,153 @@
 # NemoClaw Hermes Swarm
 
-Run a team of [Hermes Agent](https://github.com/NousResearch/hermes-agent) bots on
-one machine, each isolated in its own NVIDIA OpenShell sandbox, able to message
-each other, and usable together from the Hermes desktop app.
+Run several [Hermes Agent](https://github.com/NousResearch/hermes-agent) instances
+on one machine, each isolated in its own NVIDIA OpenShell sandbox. The agents can
+message each other and appear together in the Hermes desktop app's group chat.
 
-One command adds an agent. Point it at any OpenAI-compatible endpoint you already
-have.
+Adding an agent is one command:
 
 ```bash
 ./scripts/spawn-agent.sh --name reviewer --role "You review code for security problems."
 ```
 
-```
-Hermes desktop (your laptop)          Your cluster / workstation
-┌────────────────────┐   SSH   ┌────────────────────────────────────────────┐
-│  Bots roster       │◄───────►│  profile alpha ──► bot-alpha  (sandbox) ─┐ │
-│   @alpha  @beta    │         │  profile beta  ──► bot-beta   (sandbox) ─┼─┼──► your
-│   @reviewer        │         │  profile reviewer ► bot-reviewer(sandbox)┘ │    inference
-│  group chat        │         │                                            │    endpoint
-└────────────────────┘         │      alpha ◄── message_teammate ──► beta   │
-                               └────────────────────────────────────────────┘
-```
-
-## Why this exists
-
-A single agent is easy. A *team* of agents that can be trusted to run real work is
-not, because each one needs a boundary. This example gives every agent its own
-kernel-isolated sandbox with a deny-by-default egress policy, so an agent can only
-reach what you explicitly allow — its inference endpoint, its teammates, and
-nothing else.
-
-What you get:
-
-- **One sandbox per agent** — separate PID namespace, separate filesystem,
-  separate egress policy
-- **Agent-to-agent messaging** — a `message_teammate` tool, so agents delegate to
-  each other without you relaying
-- **Desktop integration** — agents appear in the Hermes Bots roster and can be
-  put in a group chat together
-- **One-command lifecycle** — `spawn-agent.sh` to add, `--list` to inspect,
-  `--destroy` to remove cleanly
-- **A real test suite** — verifies isolation and messaging with evidence, not
-  assertions
-
 ## Scope
 
-This example stands up one or more Hermes agents, each in its own OpenShell
-sandbox, wires them into a peer mesh, and makes them visible to the Hermes
-desktop app.
+This example sets up the agents, their sandboxes, their egress policies, the
+messaging between them, and the desktop wiring.
 
 It does not:
 
 - deploy or manage an inference server
-- provision GPUs or a model
+- provision GPUs or download a model
 - create the OpenShell gateway for you
-- configure messaging platforms (Slack, Outlook, etc.)
+- configure messaging platforms such as Slack or Outlook
 
-You supply one OpenAI-compatible inference endpoint reachable from the sandboxes —
-vLLM, SGLang, NIM, or a hosted API — via `.env`.
-
-## Provenance and support
-
-Independent community contribution. Not a supported part of NemoClaw core; its
-placement in the catalog aids discovery and does not imply NVIDIA support or a
-readiness guarantee. Operators remain responsible for their own credentials,
-endpoint availability, and any production hardening.
+You supply one OpenAI-compatible inference endpoint that the sandboxes can reach.
+vLLM, SGLang, NIM, and hosted APIs all work.
 
 ## Prerequisites
 
-Versions below are what this example was developed and verified against. Nearby
-versions will likely work; these are the ones actually tested.
+Versions below are what this was built and tested against.
 
-| Requirement | Verified with | Notes |
+| Requirement | Tested with | Notes |
 |---|---|---|
-| Linux host with Docker | Docker 29.6.2 | Compose v2 (`docker compose`) — the legacy `docker-compose` binary is not used |
-| OpenShell CLI + active gateway | openshell 0.0.85 | `openshell gateway list` must show a gateway marked `*` |
-| NemoClaw CLI *(strongly recommended)* | nemoclaw v0.0.97 | Makes policy edits **additive**. Without it, policy changes use `openshell policy set`, which **replaces** a sandbox's entire policy |
-| Hermes Agent on the host | v0.20.5, Python 3.11 | Provides the `hermes` CLI for profiles and gateways |
-| An OpenAI-compatible endpoint | any | You supply URL, model name, and key via `.env` |
-| Hermes desktop app *(optional)* | — | Only for the Bots roster and group chat |
+| Linux host with Docker | Docker 29.6.2 | Compose v2; the legacy `docker-compose` binary is not used |
+| OpenShell CLI and a running gateway | openshell 0.0.85 | `openshell gateway list` must show one marked `*` |
+| NemoClaw CLI | v0.0.97 | Strongly recommended: makes policy edits additive. Without it, `openshell policy set` replaces a sandbox's entire policy |
+| Hermes Agent on the host | v0.20.5, Python 3.11 | Provides the `hermes` CLI |
+| An OpenAI-compatible endpoint | any | URL, model name, and key go in `.env` |
+| Hermes desktop app | optional | Only for the Bots roster and group chat |
 
-Sandbox image: **Ubuntu 24.04** with **Python 3.11** (from the deadsnakes PPA).
-Policy schema: **`version: 3`**.
+Sandbox image: Ubuntu 24.04 with Python 3.11. Policy schema `version: 3`.
 
-You do **not** need a GPU on the host if your inference endpoint is remote.
+You do not need a GPU on the host if your endpoint is remote.
 
-### A PATH gotcha worth knowing up front
+### PATH gotcha
 
-`openshell`, `nemoclaw`, and `hermes` typically install into `~/.local/bin`, which
-is added by `~/.profile` — a file that a **non-login** shell does not read. So this
-fails:
+`openshell`, `nemoclaw`, and `hermes` install into `~/.local/bin`, which is added
+by `~/.profile`. Non-login shells do not read that file, so this fails:
 
 ```console
 $ ssh yourhost 'openshell --version'
 bash: line 1: openshell: command not found
 ```
 
-Use a login shell for remote invocations, and note that the Hermes desktop app
-probes the host with `bash -lc 'command -v hermes'` for exactly this reason:
+Use a login shell for remote commands:
 
 ```bash
 ssh yourhost 'bash -lc "openshell --version"'
 ```
 
-`scripts/00-preflight.sh` checks this for you.
+The desktop app probes the host the same way. `scripts/00-preflight.sh` checks it.
 
 ## Quickstart
 
+Run these in order. Each step checks the previous one worked.
+
 ```bash
+# 1. get the code and configure
 git clone <this-repo>
 cd nemoclaw-hermes-swarm
-
 cp .env.example .env
-$EDITOR .env                      # set INFERENCE_URL and INFERENCE_KEY
+$EDITOR .env                      # set INFERENCE_URL and INFERENCE_MODEL
 
-./scripts/00-preflight.sh         # checks prerequisites, fails loudly if missing
-./scripts/01-build-image.sh       # builds the sandbox base image
-./scripts/spawn-agent.sh --name alpha --role "You are Alpha, a research assistant."
-./scripts/spawn-agent.sh --name beta  --role "You are Beta, a critic who stress-tests Alpha's work."
-./scripts/e2e-test.sh             # verifies isolation, messaging, and roster visibility
+# 2. check prerequisites before spending time on a build
+./scripts/00-preflight.sh
+
+# 3. build the sandbox image
+./scripts/01-build-image.sh
+
+# 4. create two agents: a researcher and a critic
+./scripts/02-bootstrap-two-agents.sh
+
+# 5. confirm isolation, messaging and roster visibility
+./scripts/e2e-test.sh
 ```
 
-Then restart the Hermes desktop app and both agents appear in the Bots roster.
+Then restart the Hermes desktop app. Both agents appear in the Bots roster and can
+be put in a group chat together.
+
+Step 4 takes 10 to 20 minutes. Most of that is installing Hermes inside each new
+sandbox.
 
 ## How it works
 
-Five moving parts. The unintuitive ones are 3 and 4.
+Five parts. The first two are where people get stuck.
 
-**1. A sandbox per agent.** `openshell sandbox create` from a purpose-built image.
-Each sandbox gets its own PID namespace, its own writable filesystem, and a
-policy that denies egress by default.
+**Two gateways per agent.** One runs inside the sandbox and serves the api_server.
+One runs on the host and is what makes `hermes profile list` report `running`. The
+desktop roster only lists agents that have the host-side gateway, so an agent with
+just the in-sandbox one works over HTTP and is invisible in the app.
 
-**2. Hermes inside the sandbox.** The agent's brain runs *in* the sandbox, so its
-tool calls — terminal, file writes, network — are all subject to the policy.
+**The bridge, not loopback.** A sandbox has its own network namespace, so
+`127.0.0.1` inside it is the sandbox, not your host. Cross-boundary traffic uses
+`host.openshell.internal`, which resolves to the OpenShell docker bridge. If your
+inference server binds only to loopback, `Dockerfile.relay` republishes it on the
+bridge.
 
-**3. Two gateways per agent, not one.** This is the part that surprises people:
+**A sandbox per agent.** Separate PID, network, mount, and IPC namespaces, and an
+egress policy that denies by default.
 
-| gateway | where it runs | what it does |
-|---|---|---|
-| in-sandbox | inside `bot-<name>` | serves the api_server the host profile calls |
-| **host-side** | on the host | makes the profile report `running` — **the desktop roster only lists these** |
+**Hermes inside the sandbox.** The agent's tool calls happen inside the boundary,
+so terminal commands, file writes, and network access are all subject to the
+policy.
 
-An agent with only the in-sandbox gateway works perfectly over HTTP and is
-completely invisible in the desktop. `spawn-agent.sh` starts both.
+**Agent-to-agent messaging.** A plugin gives each agent a `message_teammate` tool
+that POSTs to a teammate's api_server. The teammate runs a full agent turn in its
+own sandbox and returns the answer.
 
-**4. The bridge, not loopback.** A sandbox has its own network namespace, so
-`127.0.0.1` inside it is *the sandbox*, not your host. Cross-boundary traffic goes
-via `host.openshell.internal`, which resolves to the OpenShell docker bridge — not
-the default docker bridge. If your inference server binds only to loopback, this
-example includes a small socat relay to expose it on the bridge.
+Diagrams for all of this, including the network boundaries and status codes:
+[docs/architecture.md](docs/architecture.md).
 
-**5. The peer mesh.** Each agent runs an api_server published onto the bridge by
-`openshell forward service`. A small Hermes plugin gives every agent a
-`message_teammate` tool that POSTs to a teammate's api_server. The teammate runs a
-full agent turn and returns its answer.
-
-## Scripts
-
-| Script | Purpose |
-|---|---|
-| `scripts/00-preflight.sh` | Verify prerequisites before you waste time |
-| `scripts/01-build-image.sh` | Build the sandbox base image |
-| `scripts/spawn-agent.sh` | Add / list / destroy an agent |
-| `scripts/start-swarm.sh` | Restore everything after a reboot (idempotent) |
-| `scripts/fix-desktop-backends.sh` | Repair orphaned/dead desktop backends when a bot goes silent |
-| `scripts/e2e-test.sh` | Full verification suite |
-
-### Managing agents
+## Managing agents
 
 ```bash
-./scripts/spawn-agent.sh --name gamma --role "..."      # add
-./scripts/spawn-agent.sh --name gamma --role-file r.md  # role from a file
-./scripts/spawn-agent.sh --list                         # inspect the swarm
-./scripts/spawn-agent.sh --name gamma --destroy         # remove cleanly
+./scripts/spawn-agent.sh --name gamma --role "..."       # add
+./scripts/spawn-agent.sh --name gamma --role-file r.md   # role from a file
+./scripts/spawn-agent.sh --list                          # inspect the swarm
+./scripts/spawn-agent.sh --name gamma --destroy          # remove cleanly
+./scripts/start-swarm.sh                                 # restore after a reboot
 ```
 
-By default a new agent **shares** an existing inference endpoint, so adding one
-costs no GPU and no model load. Adding an agent takes a few minutes, most of it
-installing Hermes inside the new sandbox.
+A new agent shares an existing inference endpoint by default, so adding one costs
+no GPU and no model load.
 
-## Verifying it actually works
+## Verifying it works
 
-Do not trust an agent's self-description — it can recite its role from its prompt
-with every tool broken. `e2e-test.sh` checks evidence instead:
+An agent can describe its role perfectly while every tool is broken, so the test
+suite checks evidence instead of self-reports:
 
-- **Isolation:** writes a different marker to the same path in every sandbox and
+- **Isolation**: writes a different marker to the same path in every sandbox and
   confirms each sees only its own
-- **Messaging:** plants a random secret inside agent A's sandbox and requires
-  agent B to retrieve it through `message_teammate` — B cannot know it otherwise
-- **Roster visibility:** asserts every profile reports `running` and has a live
-  host gateway
-- **Egress policy:** confirms allowed routes return 200 and disallowed ones are
-  blocked
+- **Messaging**: plants a random secret inside agent A's sandbox and requires agent
+  B to retrieve it through `message_teammate`
+- **Roster visibility**: asserts every profile reports `running` with a live
+  host-side gateway
+- **Policy**: confirms allowed routes return 200 and denied ones do not
 
-## Security notes
-
-- **Egress is deny-by-default.** An agent reaches only what its policy lists.
-  Widening a policy is a deliberate act; `policies/` has commented examples.
-- **Policies bind to binary paths, not just hosts.** Allowlisting a host is not
-  enough — the calling binary must be listed too. This is the single most
-  confusing thing about OpenShell policies.
-- **Secrets stay out of the repo.** Keys live in `.env` (gitignored) and in
-  per-agent key files created at runtime with `openssl rand -hex 32`.
-- **api_server keys must be strong.** That endpoint dispatches terminal-capable
-  work; Hermes refuses to start with a weak key, and it is right to.
-- **The sandbox boundary protects the agent's tools, not your model server.** If
-  your inference server runs on the host, it is outside the boundary.
-
-## Troubleshooting
-
-| Symptom | Cause |
-|---|---|
-| Agent works via CLI but is missing from the desktop roster | No host-side gateway — see "two gateways" above |
-| One bot silently receives nothing in group chat while others reply | Orphaned desktop backend from a previous app session — run `./scripts/fix-desktop-backends.sh`, then restart the app |
-| A bot replies `(pass)` | Working as designed: the room rules say pass rather than repeat a point |
-| A chained task (`@a research, @b summarize`) stalls forever | The first agent in the chain never received the message; the rest are correctly waiting |
-| Desktop shows nothing at all | `connections.json` is read only at app launch; fix it, *then* restart |
-| `403` from inside a sandbox | Policy denied it — host not allowed, or the calling binary is not in `binaries` |
-| `502` from inside a sandbox | Policy allowed it, but nothing is listening — usually a loopback-bound service |
-| Spawn hangs with an empty `/sandbox/.hermes` | Install step stalled; see `docs/troubleshooting.md` for the recovery |
-| A bot stays silent in group chat | Often correct — room rules say reply only with something new to add |
-
-Agent tracing (spans in LangSmith, per-turn inputs/outputs/tokens) is documented
-in [observability/README.md](observability/README.md).
-
-Full details in [docs/troubleshooting.md](docs/troubleshooting.md), and for the
-desktop group chat specifically — silent agents, orphaned backends, deadlocked
-chain tasks — see [docs/group-chat-troubleshooting.md](docs/group-chat-troubleshooting.md).
+```bash
+./scripts/e2e-test.sh
+```
 
 ## Repository layout
 
@@ -234,16 +155,44 @@ chain tasks — see [docs/group-chat-troubleshooting.md](docs/group-chat-trouble
 nemoclaw-hermes-swarm/
 ├── README.md
 ├── .env.example              # copy to .env; never commit .env
-├── .gitignore
 ├── Dockerfile.sandbox        # sandbox base image
 ├── Dockerfile.relay          # socat relay for loopback-bound endpoints
-├── scripts/
-├── observability/            # NeMo Relay → LangSmith tracing (see its README)
-├── policies/                 # per-agent egress policy templates
+├── scripts/                  # preflight, build, bootstrap, spawn, test, repair
+├── policies/                 # egress policy templates
 ├── plugins/peer-messaging/   # the message_teammate tool
-├── souls/                    # example agent role definitions
-└── docs/
+├── souls/                    # example agent roles
+├── observability/            # optional NeMo Relay to LangSmith tracing
+└── docs/                     # architecture, troubleshooting, customization
 ```
+
+## Documentation
+
+| Document | Answers |
+|---|---|
+| [docs/architecture.md](docs/architecture.md) | How the pieces fit, what crosses which boundary |
+| [docs/troubleshooting.md](docs/troubleshooting.md) | Something is broken |
+| [docs/customizing-agents.md](docs/customizing-agents.md) | Changing roles, policies, models |
+| [observability/README.md](observability/README.md) | Tracing agent runs into LangSmith |
+
+## Security notes
+
+- Egress is deny-by-default. An agent reaches only what its policy lists.
+- Policies bind to binary paths as well as hosts. Allowlisting a host is not
+  enough; the calling program must be listed too. This is the most confusing part
+  of OpenShell policies.
+- Keys live in `.env`, which is gitignored, and in per-agent key files generated at
+  runtime with `openssl rand -hex 32`.
+- The api_server dispatches terminal-capable work, so its key must be strong.
+  Hermes refuses to start with a weak one.
+- The sandbox boundary protects the agent's tools, not your model server. An
+  inference server on the host sits outside it.
+
+## Provenance
+
+Independent community contribution. Not a supported part of NemoClaw core; its
+placement in the catalog aids discovery and does not imply NVIDIA support. You
+remain responsible for your own credentials, endpoint availability, and any
+production hardening.
 
 ## License
 
