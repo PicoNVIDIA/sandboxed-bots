@@ -4,7 +4,7 @@ description: "Use when running sandboxed Hermes agents. Spawn, debug, verify a m
 version: 1.0.0
 author: nemoclaw-hermes-swarm example
 license: Apache-2.0
-platforms: [linux]
+platforms: [macos, linux]
 metadata:
   hermes:
     tags: [openshell, nemoclaw, sandbox, multi-agent, hermes-swarm]
@@ -18,6 +18,10 @@ message each other, or when an existing swarm misbehaves.
 
 Assumes this repository is checked out and an OpenAI-compatible inference endpoint
 already exists. Deploying an inference server is out of scope.
+
+The agents run on a Linux host with Docker and OpenShell. You can drive that host
+from anywhere, including macOS over SSH, so wrap remote commands in a login shell:
+`ssh <host> 'bash -lc "..."'`.
 
 ## Before touching anything
 
