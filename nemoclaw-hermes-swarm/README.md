@@ -221,6 +221,9 @@ with every tool broken. `e2e-test.sh` checks evidence instead:
 | Spawn hangs with an empty `/sandbox/.hermes` | Install step stalled; see `docs/troubleshooting.md` for the recovery |
 | A bot stays silent in group chat | Often correct — room rules say reply only with something new to add |
 
+Agent tracing (spans in LangSmith, per-turn inputs/outputs/tokens) is documented
+in [observability/README.md](observability/README.md).
+
 Full details in [docs/troubleshooting.md](docs/troubleshooting.md), and for the
 desktop group chat specifically — silent agents, orphaned backends, deadlocked
 chain tasks — see [docs/group-chat-troubleshooting.md](docs/group-chat-troubleshooting.md).
@@ -235,6 +238,7 @@ nemoclaw-hermes-swarm/
 ├── Dockerfile.sandbox        # sandbox base image
 ├── Dockerfile.relay          # socat relay for loopback-bound endpoints
 ├── scripts/
+├── observability/            # NeMo Relay → LangSmith tracing (see its README)
 ├── policies/                 # per-agent egress policy templates
 ├── plugins/peer-messaging/   # the message_teammate tool
 ├── souls/                    # example agent role definitions

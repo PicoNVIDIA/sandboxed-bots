@@ -1,0 +1,31 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+#
+# Additive egress policy: lets a sandbox send OTLP traces to the host collector.
+# Apply with `nemoclaw bot-<agent> policy-add --from-file …` — NEVER
+# `openshell policy set`, which replaces the sandbox's entire policy.
+#
+# Status codes from inside a sandbox:
+#   403 = policy denied (host not listed, OR the calling binary is not listed)
+#   502 = policy allowed, nothing listening on the far side
+#   200 = working
+preset:
+  name: otlp-export
+  description: "Relay OTLP traces to the host collector on the OpenShell bridge"
+network_policies:
+  otlp-export:
+    name: otlp-export
+    endpoints:
+      - { host: host.openshell.internal, port: 4319, tls: skip }
+      - { host: 172.18.0.1, port: 4319, tls: skip }
+      # 4318 is a conventional OTLP port (e.g. a local Arize Phoenix)
+      - { host: host.openshell.internal, port: 4318, tls: skip }
+      - { host: 172.18.0.1, port: 4318, tls: skip }
+    binaries:
+      - { path: /sandbox/.hermes/hermes-agent/venv/bin/python }
+      - { path: /sandbox/.hermes/hermes-agent/venv/bin/* }
+      - { path: /usr/bin/python3 }
+      - { path: /usr/bin/python3.11 }
+      - { path: /usr/bin/curl }
+      - { path: /bin/sh }
+      - { path: /bin/bash }

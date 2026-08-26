@@ -1,0 +1,85 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+#
+# OpenTelemetry Collector: receives NeMo Relay traces from sandboxed Hermes agents
+# and forwards them to LangSmith.
+#
+# WHY A COLLECTOR AT ALL: it keeps the LangSmith API key on the HOST. Sandboxes are
+# agent-writable, so a credential placed inside one is exposed to the agent. Here the
+# key is injected as an environment variable at container start and referenced below,
+# so it never lands in a file:
+#
+#   docker run -d --name otel-collector --restart unless-stopped \
+#     -p 4319:4319 -p 127.0.0.1:8889:8888 \
+#     -e LANGSMITH_API_KEY="$(cat ~/.langsmith/api_key)" \
+#     -v ~/otel-collector/config.yaml:/etc/otelcol-contrib/config.yaml:ro \
+#     otel/opentelemetry-collector-contrib:latest \
+#     --config /etc/otelcol-contrib/config.yaml
+
+receivers:
+  otlp:
+    protocols:
+      http:
+        # 0.0.0.0 so the OpenShell docker bridge (172.18.0.1) can reach it.
+        # Sandboxes cannot reach host loopback: they have their own netns.
+        endpoint: 0.0.0.0:4319
+
+processors:
+  batch:
+    timeout: 5s
+    send_batch_size: 256
+
+  # ── ROOT SYNTHESIS ─────────────────────────────────────────────────────────
+  # Without this, LangSmith shows a run COUNT but every run renders EMPTY.
+  #
+  # Relay exports a span when its scope closes. A Hermes gateway session stays
+  # open for days, so the enclosing `hermes.session` scope never closes and never
+  # exports. Every span Relay does send therefore carries a parentSpanId whose
+  # parent the backend never receives — an orphan. LangSmith accepts them (200),
+  # counts them, and cannot render them because there is no root run.
+  #
+  # Clearing the dangling parent on the two top-level Relay spans gives each trace
+  # a renderable root. Child llm/tool spans keep their real parents, so the tree
+  # below the root is unchanged.
+  #
+  # NOTE: `set(parent_span_id.string, "")` passes config validation and silently
+  # does nothing — an empty string is not a zero SpanID. Use the 16-zero hex form.
+  transform/root:
+    error_mode: ignore
+    trace_statements:
+      - context: span
+        statements:
+          - set(parent_span_id.string, "0000000000000000") where name == "hermes.turn"
+          - set(parent_span_id.string, "0000000000000000") where name == "hermes.task_run"
+
+exporters:
+  otlphttp/langsmith:
+    # LangSmith accepts OTLP over HTTP/protobuf. Do not append /v1/traces here —
+    # the exporter adds it.
+    endpoint: https://api.smith.langchain.com/otel
+    headers:
+      x-api-key: "${env:LANGSMITH_API_KEY}"
+      Langsmith-Project: "hermes-swarm"
+  debug:
+    # `detailed` prints span attributes, which is how you confirm per-agent
+    # attribution. `basic` hides them and makes greps for agent names fail.
+    verbosity: detailed
+
+service:
+  telemetry:
+    logs:
+      level: info
+    metrics:
+      # Exporter counters are the ONLY trustworthy delivery signal:
+      #   curl -s localhost:8889/metrics | grep otelcol_exporter
+      readers:
+        - pull:
+            exporter:
+              prometheus:
+                host: 0.0.0.0
+                port: 8888
+  pipelines:
+    traces:
+      receivers: [otlp]
+      processors: [transform/root, batch]   # transform BEFORE batch
+      exporters: [otlphttp/langsmith, debug]
