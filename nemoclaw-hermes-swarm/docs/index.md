@@ -9,6 +9,7 @@ Which document answers which question.
 | Something is broken | [troubleshooting.md](troubleshooting.md) |
 | How do I change an agent's behaviour, tools, or model? | [customizing-agents.md](customizing-agents.md) |
 | How do I see what my agents actually did? | [../observability/README.md](../observability/README.md) |
+| Can my own agent set this up for me? | [../skill/README.md](../skill/README.md) |
 
 ## Reading order for a first run
 

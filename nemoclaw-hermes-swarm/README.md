@@ -162,6 +162,7 @@ nemoclaw-hermes-swarm/
 ├── plugins/peer-messaging/   # the message_teammate tool
 ├── souls/                    # example agent roles
 ├── observability/            # optional NeMo Relay to LangSmith tracing
+├── skill/                    # Hermes skill so an agent can drive this setup
 └── docs/                     # architecture, troubleshooting, customization
 ```
 
@@ -173,6 +174,7 @@ nemoclaw-hermes-swarm/
 | [docs/troubleshooting.md](docs/troubleshooting.md) | Something is broken |
 | [docs/customizing-agents.md](docs/customizing-agents.md) | Changing roles, policies, models |
 | [observability/README.md](observability/README.md) | Tracing agent runs into LangSmith |
+| [skill/README.md](skill/README.md) | Letting your own Hermes agent drive this setup |
 
 ## Security notes
 
