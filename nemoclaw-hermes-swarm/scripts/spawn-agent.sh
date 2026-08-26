@@ -156,12 +156,25 @@ if [[ $DESTROY -eq 1 ]]; then
   # pid record blocks the next start for a re-created agent of the same name.
   rm -f "$HOME/.hermes/profiles/$NAME"/gateway.{pid,lock,sock} \
         "$HOME/.hermes/profiles/$NAME/gateway_state.json" 2>/dev/null || true
+  # Observability config lives INSIDE the sandbox, so it must be cleared before the
+  # sandbox is deleted. Left behind, a re-created agent of the same name inherits a
+  # relay-plugins.toml pointing at a collector that may no longer exist — and Relay
+  # fails open, so it exports nothing silently.
+  if openshell sandbox list 2>/dev/null | sed -r 's/\x1B\[[0-9;]*[mK]//g' \
+       | grep -qE "^\s*$SB\s"; then
+    timeout 90 openshell sandbox exec -n "$SB" --timeout 70 -- /bin/sh -c \
+      'rm -f /sandbox/.hermes/relay-plugins.toml
+       [ -f /sandbox/.hermes/.env ] && sed -i "/^HERMES_NEMO_RELAY_PLUGINS_TOML=/d" /sandbox/.hermes/.env
+       exit 0' >/dev/null 2>&1 && ok "tracing config cleared"
+  fi
   openshell sandbox delete "$SB" >/dev/null 2>&1 && ok "sandbox deleted"
   for c in "vllm-$NAME" "relay-$NAME"; do
     docker rm -f "$c" >/dev/null 2>&1 && ok "container $c removed"
   done
   rm -rf "$HOME/.hermes/profiles/$NAME" && ok "profile removed"
   rm -f "$SECRETS_DIR/$NAME.key"
+  # generated per-agent policy, written during spawn
+  rm -f "$POLICY_DIR/policy-$SB.yaml" && ok "policy removed"
   ok "agent $NAME destroyed"
   exit 0
 fi

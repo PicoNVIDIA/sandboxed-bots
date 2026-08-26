@@ -249,6 +249,74 @@ for a in $(ls -d ~/.hermes/profiles/*/ 2>/dev/null | xargs -n1 basename | grep -
     || no "$a has gateway.pid" "no host gateway ever started"
 done
 
+
+echo "=============================================="
+echo "16. TRACING (NeMo Relay -> collector)"
+echo "=============================================="
+# Skipped cleanly when tracing was never enabled. When it HAS been enabled, these
+# are the checks that matter: Relay fails open, so a healthy agent with a broken
+# config exports nothing and reports no error anywhere.
+_TRACE_PORT="${OTLP_PORT:-4319}"
+_METRICS_PORT="${METRICS_PORT:-8889}"
+_any_toml=0
+for _a in "${_AG[@]}"; do
+  if timeout 80 openshell sandbox exec -n "bot-$_a" --timeout 60 -- /bin/sh -c \
+       'test -s /sandbox/.hermes/relay-plugins.toml && echo yes' 2>/dev/null \
+       | grep -q yes; then
+    _any_toml=1
+  fi
+done
+
+if [ "$_any_toml" -eq 0 ]; then
+  echo "  SKIP  tracing not enabled on any agent (run scripts/03-enable-tracing.sh)"
+else
+  for _a in "${_AG[@]}"; do
+    # config present in the sandbox
+    _t=$(timeout 80 openshell sandbox exec -n "bot-$_a" --timeout 60 -- /bin/sh -c \
+          'test -s /sandbox/.hermes/relay-plugins.toml && echo yes || echo no' 2>/dev/null \
+          | tr -d ' \r\n' | tail -c3)
+    chk "$_a relay-plugins.toml present" "$_t" "yes"
+
+    # the env var must be in the sandbox .env, or the gateway never activates Relay
+    _e=$(timeout 80 openshell sandbox exec -n "bot-$_a" --timeout 60 -- /bin/sh -c \
+          'grep -c "^HERMES_NEMO_RELAY_PLUGINS_TOML=" /sandbox/.hermes/.env 2>/dev/null || echo 0' \
+          2>/dev/null | tr -d ' \r\n' | tail -c1)
+    chk "$_a relay env var set" "$_e" "1"
+
+    # the collector must be reachable from inside the sandbox.
+    # 403 = egress policy denied it; 502 = allowed but nothing listening.
+    _c=$(timeout 80 openshell sandbox exec -n "bot-$_a" --timeout 60 -- /bin/sh -c \
+          "curl -s -o /dev/null -w '%{http_code}' --max-time 8 -X POST \
+             -H 'Content-Type: application/json' -d '{}' \
+             http://host.openshell.internal:$_TRACE_PORT/v1/traces" 2>/dev/null \
+          | tr -d ' \r\n' | tail -c3)
+    if [ "$_c" = "403" ]; then
+      no "$_a can reach collector :$_TRACE_PORT" "403 - egress policy denies it; apply policies/otlp-export.yaml"
+    elif [ "$_c" = "000" ] || [ -z "$_c" ]; then
+      no "$_a can reach collector :$_TRACE_PORT" "no route (got '${_c:-empty}')"
+    else
+      ok "$_a can reach collector :$_TRACE_PORT (HTTP $_c)"
+    fi
+  done
+
+  # delivery, from the collector's own counters. Log greps are unreliable here
+  # because verbosity:basic hides attributes.
+  _sent=$(curl -s --max-time 10 "http://127.0.0.1:$_METRICS_PORT/metrics" 2>/dev/null \
+          | awk '/^otelcol_exporter_sent_spans\{exporter="otlphttp/ {print $NF; exit}')
+  _bad=$(curl -s --max-time 10 "http://127.0.0.1:$_METRICS_PORT/metrics" 2>/dev/null \
+          | awk '/^otelcol_exporter_send_failed_spans/ {print $NF; exit}')
+  if [ -z "$_sent" ]; then
+    echo "  SKIP  collector metrics not exposed on :$_METRICS_PORT"
+  else
+    if [ "${_sent%%.*}" -gt 0 ] 2>/dev/null; then
+      ok "collector has exported spans ($_sent)"
+    else
+      no "collector has exported spans" "counter is $_sent"
+    fi
+    chk "no failed span exports" "${_bad:-0}" "0"
+  fi
+fi
+
 echo "=============================================="
 echo "SUMMARY: $pass passed, $fail failed"
 echo "=============================================="
