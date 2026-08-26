@@ -15,6 +15,11 @@
 # Safe: touches only ~/.hermes/desktop-ssh/*/backend.lock.json and the backend
 # processes they name. Never touches agents, sandboxes, engines, or forwards.
 set -uo pipefail
+
+# WHERE THIS RUNS: the CLIENT machine (where the Hermes desktop app runs), which
+# is frequently macOS with bash 3.2. Keep this script bash-3.2 compatible: no
+# mapfile/readarray, no associative arrays, no ${var^^}. The other scripts in this
+# directory run on the Linux host and may use bash 4 features.
 export PATH="$HOME/.local/bin:$PATH"
 
 # An orphan is this many seconds older than the newest backend.
@@ -43,9 +48,14 @@ PY
 }
 
 echo "==> current desktop backends"
-mapfile -t rows < <(inspect)
+# NOTE: mapfile is bash 4+, and macOS ships bash 3.2. This script runs on the
+# client machine, which is often a Mac, so read into an array portably instead.
+rows=()
+while IFS= read -r line; do
+  [ -n "$line" ] && rows+=("$line")
+done < <(inspect)
 newest=0
-for r in "${rows[@]}"; do
+for r in "${rows[@]+"${rows[@]}"}"; do
   IFS=$'\t' read -r prof pid secs f state <<<"$r"
   printf "  %-10s pid=%-9s up=%-7s %s\n" "$prof" "$pid" "${secs}s" "$state"
   [ "$state" = alive ] && [ "$secs" -gt 0 ] && [ "$secs" -lt 100000 ] && \
@@ -54,7 +64,7 @@ done
 
 echo "==> repairing"
 fixed=0
-for r in "${rows[@]}"; do
+for r in "${rows[@]+"${rows[@]}"}"; do
   IFS=$'\t' read -r prof pid secs f state <<<"$r"
   if [ "$state" = dead ]; then
     echo "  dead lock       $prof -> cleared (blocks respawn)"

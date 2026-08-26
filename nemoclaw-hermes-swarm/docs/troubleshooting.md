@@ -106,6 +106,9 @@ The tell is uptime skew, not health:
 ./scripts/fix-desktop-backends.sh
 ```
 
+Run that on the machine with the desktop app, not on the host. It is
+bash-3.2 compatible so it works on stock macOS.
+
 Then restart the desktop app. Healthy looks like tightly clustered uptimes.
 
 A lock whose PID no longer exists also blocks respawn entirely, so the bot never
