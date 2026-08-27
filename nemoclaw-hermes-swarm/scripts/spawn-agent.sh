@@ -19,7 +19,12 @@
 set -euo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+# A variable supplied on the command line must beat .env. Preserve this testability
+# switch across the source operation; when it was not supplied, .env may define it.
+_seed_override_set="${HERMES_SEED_FROM_SIBLING+x}"
+_seed_override_value="${HERMES_SEED_FROM_SIBLING:-}"
 [[ -f "$HERE/.env" ]] && { set -a; . "$HERE/.env"; set +a; }
+[[ -n "$_seed_override_set" ]] && HERMES_SEED_FROM_SIBLING="$_seed_override_value"
 
 export PATH="$HOME/.local/bin:$PATH"
 SWARM_HOME="${SWARM_HOME:-$HERE}"
@@ -35,6 +40,9 @@ AGENT_CONTEXT_LENGTH="${AGENT_CONTEXT_LENGTH:-65536}"
 INFERENCE_URL="${INFERENCE_URL:-}"
 INFERENCE_MODEL="${INFERENCE_MODEL:-}"
 INFERENCE_KEY="${INFERENCE_KEY:-local-noauth}"
+# Default: seed Hermes from an existing sandbox to avoid GitHub's shared-proxy
+# rate limit. Set to 0 only to exercise or force the true first-agent clone path.
+HERMES_SEED_FROM_SIBLING="${HERMES_SEED_FROM_SIBLING:-1}"
 
 # Only used by the optional --new-engine path, which starts a local vLLM. This
 # example assumes you already have an endpoint, so these are normally empty.
@@ -146,12 +154,34 @@ if [[ $DESTROY -eq 1 ]]; then
   done
   pkill -f "profile $NAME serve" 2>/dev/null || true
   pkill -f "forward service .* $SB" 2>/dev/null || true
-  # host-side gateway (leaves a stale gateway.pid/.lock if not stopped)
-  if [[ -f "$HOME/.hermes/profiles/$NAME/gateway.pid" ]]; then
-    kill "$(cat "$HOME/.hermes/profiles/$NAME/gateway.pid")" 2>/dev/null \
-      && ok "host gateway stopped"
+  # gateway.pid is a JSON record, not a bare PID. Passing `cat gateway.pid`
+  # directly to kill silently fails and leaves a gateway that recreates cron state
+  # after the profile directory is removed. Parse the record, with a legacy bare-PID
+  # fallback, then escalate only that exact process when needed.
+  _gw_pid=""
+  _gw_file="$HOME/.hermes/profiles/$NAME/gateway.pid"
+  if [[ -f "$_gw_file" ]]; then
+    _gw_pid=$(python3 - "$_gw_file" <<'PY'
+import json, sys
+p = sys.argv[1]
+try:
+    print(json.load(open(p)).get("pid") or "")
+except Exception:
+    print(open(p).read().strip())
+PY
+)
+    if [[ "$_gw_pid" =~ ^[0-9]+$ ]]; then
+      kill "$_gw_pid" 2>/dev/null || true
+      for _i in 1 2 3 4 5; do
+        kill -0 "$_gw_pid" 2>/dev/null || break
+        sleep 1
+      done
+      kill -0 "$_gw_pid" 2>/dev/null && kill -9 "$_gw_pid" 2>/dev/null || true
+      kill -0 "$_gw_pid" 2>/dev/null || ok "host gateway stopped"
+    else
+      warn "could not parse host gateway PID from $_gw_file"
+    fi
   fi
-  pkill -f "hermes -p $NAME gateway run" 2>/dev/null || true
   # gateway.lock is the runtime lock gateway_running keys off; a leftover lock or
   # pid record blocks the next start for a re-created agent of the same name.
   rm -f "$HOME/.hermes/profiles/$NAME"/gateway.{pid,lock,sock} \
@@ -171,11 +201,21 @@ if [[ $DESTROY -eq 1 ]]; then
   for c in "vllm-$NAME" "relay-$NAME"; do
     docker rm -f "$c" >/dev/null 2>&1 && ok "container $c removed"
   done
-  rm -rf "$HOME/.hermes/profiles/$NAME" && ok "profile removed"
+  # Delete through Hermes so profile registries, cron ticker state, aliases, and
+  # runtime metadata are deregistered. Raw rm -rf appears to work, then Hermes'
+  # global cron ticker recreates an empty profile/cron directory minutes later.
+  if hermes profile delete -y "$NAME" >/dev/null 2>&1; then
+    ok "profile deregistered and removed"
+  else
+    # Partially-created profiles may not be known to the registry. The raw cleanup
+    # remains a safe fallback, but a known profile must use the CLI path above.
+    rm -rf "$HOME/.hermes/profiles/$NAME" && ok "partial profile directory removed"
+  fi
   rm -f "$SECRETS_DIR/$NAME.key"
   # generated per-agent policy, written during spawn
   rm -f "$POLICY_DIR/policy-$SB.yaml" && ok "policy removed"
   ok "agent $NAME destroyed"
+  warn "restart the Hermes desktop app to drop cached roster/cron polling for $NAME"
   exit 0
 fi
 
@@ -375,9 +415,11 @@ seed_from_sibling() {
 
 if sbexec 'test -x /sandbox/.hermes/hermes-agent/venv/bin/python && echo yes' 120 | grep -q yes; then
   ok "Hermes already installed"
-elif seed_from_sibling; then
+elif [[ "$HERMES_SEED_FROM_SIBLING" != "0" ]] && seed_from_sibling; then
   ok "Hermes seeded from an existing sandbox"
 else
+  [[ "$HERMES_SEED_FROM_SIBLING" == "0" ]] \
+    && warn "sibling seeding disabled (HERMES_SEED_FROM_SIBLING=0); using upstream installer"
   sbexec 'export HOME=/sandbox HERMES_HOME=/sandbox/.hermes
           cd /sandbox
           curl -fsSL https://hermes-agent.nousresearch.com/install.sh | bash >/sandbox/install.log 2>&1
@@ -478,7 +520,7 @@ nohup setsid openshell forward service --target-port "$API_PORT" \
   --local "$BRIDGE:$API_PORT" "$SB" > "$LOG_DIR/fwd-$NAME.log" 2>&1 < /dev/null &
 sleep 6
 code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 8 \
-  -H "Authorization: Bearer ***" "http://$BRIDGE:$API_PORT/v1/models")
+  -H "Authorization: Bearer $KEY" "http://$BRIDGE:$API_PORT/v1/models")
 [[ "$code" == "200" ]] && ok "api_server reachable on bridge (200)" || warn "api_server returned $code"
 
 # ── 7. host profile ─────────────────────────────────────────────────────────

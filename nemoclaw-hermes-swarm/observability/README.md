@@ -55,23 +55,44 @@ docker run -d --name otel-collector --restart unless-stopped \
   --config /etc/otelcol-contrib/config.yaml
 ```
 
-**3. Allow the egress.** Deny-by-default, so add an **additive** policy — never
-`openshell policy set`, which replaces the whole thing:
+**3. Enable tracing for the agents.**
 
 ```bash
-nemoclaw bot-<agent> policy-add --from-file otlp-policy.yaml --yes
+./scripts/03-enable-tracing.sh
 ```
 
-**4. Configure each agent.** Copy `relay-plugins.toml.example` to
-`/sandbox/.hermes/relay-plugins.toml`, substituting `AGENT_NAME`, then:
+The script discovers agents created by this checkout, applies
+`policies/otlp-export.yaml` additively, writes a per-agent
+`relay-plugins.toml`, sets `HERMES_NEMO_RELAY_PLUGINS_TOML`, enables shared
+metrics, restarts each in-sandbox gateway, sends a real turn, and exits non-zero
+unless the collector's sent-spans counter increases. That last check matters:
+Relay fails open, so config presence alone proves nothing.
+
+For a second collector or a non-default project:
 
 ```bash
+OTLP_PORT=4329 METRICS_PORT=8899 LANGSMITH_PROJECT=hermes-swarm-e2e \
+  ./scripts/03-enable-tracing.sh agent-one agent-two
+```
+
+### Manual setup (reference)
+
+The script above performs these steps. Use the manual path only when debugging the
+script itself.
+
+```bash
+# additive egress; never `openshell policy set`, which replaces the whole policy
+nemoclaw bot-<agent> policy-add --from-file policies/otlp-export.yaml --yes
+
+# copy relay-plugins.toml.example into the sandbox and replace AGENT_NAME
+# then append the env var and enable shared metrics inside that sandbox
 echo 'HERMES_NEMO_RELAY_PLUGINS_TOML=/sandbox/.hermes/relay-plugins.toml' \
   >> /sandbox/.hermes/.env
 hermes config set telemetry.shared_metrics.enabled true
 ```
 
-**5. Restart the in-sandbox gateway.** Non-negotiable — see below.
+Restart the in-sandbox gateway after writing the env var. The variable is read
+once at process start; changing it mid-flight does nothing.
 
 ## Three things that will waste your afternoon
 

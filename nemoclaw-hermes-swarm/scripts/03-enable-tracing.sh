@@ -24,6 +24,10 @@ export PATH="$HOME/.local/bin:$PATH"
 OTLP_PORT="${OTLP_PORT:-4319}"          # collector OTLP/HTTP port on the bridge
 METRICS_PORT="${METRICS_PORT:-8889}"    # collector prometheus port on the host
 LANGSMITH_PROJECT="${LANGSMITH_PROJECT:-hermes-swarm}"
+BRIDGE="${BRIDGE:-$(docker network inspect openshell-docker \
+  --format '{{range .IPAM.Config}}{{.Gateway}}{{end}}' 2>/dev/null || echo 172.18.0.1)}"
+LOG_DIR="${LOG_DIR:-$HERE/logs}"
+mkdir -p "$LOG_DIR"
 
 ok()   { printf "  \033[32mok\033[0m   %s\n" "$*"; }
 warn() { printf "  \033[33mwarn\033[0m %s\n" "$*"; }
@@ -54,15 +58,17 @@ counter() {
 }
 
 echo "==> collector check"
-BEFORE=$(counter 'otelcol_exporter_sent_spans{exporter="otlphttp/langsmith"')
-if [[ -z "$BEFORE" ]]; then
-  warn "no exporter counter on :$METRICS_PORT — cannot verify delivery"
-  warn "start the collector first (observability/README.md), or set METRICS_PORT"
-  VERIFY=0
-else
-  ok "collector reachable, spans sent so far: $BEFORE"
-  VERIFY=1
+_METRICS_HTTP=$(curl -s -o /dev/null -w '%{http_code}' --max-time 10   "http://127.0.0.1:$METRICS_PORT/metrics" 2>/dev/null)
+if [[ "$_METRICS_HTTP" != "200" ]]; then
+  die "collector metrics endpoint :$METRICS_PORT returned ${_METRICS_HTTP:-000}.
+     Start the collector first (observability/README.md), or set METRICS_PORT."
 fi
+# The sent-spans counter does not exist until the first span is exported. Treat its
+# absence as zero at baseline; delivery is proven only when it increases later.
+BEFORE=$(counter 'otelcol_exporter_sent_spans{exporter="otlphttp/langsmith"')
+BEFORE="${BEFORE:-0}"
+ok "collector reachable, spans sent so far: $BEFORE"
+VERIFY=1
 
 for a in $AGENTS; do
   SB="bot-$a"
@@ -71,6 +77,24 @@ for a in $AGENTS; do
   # api_server port from the host profile, so the resource attributes are accurate
   PORT=$(grep -oE '(host\.openshell\.internal|172\.18\.0\.1):[0-9]+' \
           "$HOME/.hermes/profiles/$a/config.yaml" 2>/dev/null | head -1 | cut -d: -f2)
+
+  # Egress is deny-by-default. Apply the repo's policy ADDITIVELY before the
+  # restart, substituting the requested test port and actual bridge address.
+  POLICY_TEMPLATE="$HERE/policies/otlp-export.yaml"
+  [[ -f "$POLICY_TEMPLATE" ]] || die "missing $POLICY_TEMPLATE"
+  TMP_POLICY=$(mktemp /tmp/hermes-otlp-policy.XXXXXX.yaml)
+  sed -e "s/port: 4319/port: $OTLP_PORT/g" \
+      -e "s/172\.18\.0\.1/$BRIDGE/g" \
+      "$POLICY_TEMPLATE" > "$TMP_POLICY"
+  _POLICY_OUT=$(nemoclaw "$SB" policy-add --from-file "$TMP_POLICY" --yes 2>&1)
+  _POLICY_RC=$?
+  if [[ "$_POLICY_RC" -eq 0 ]]; then
+    ok "$a: OTLP egress policy applied (bridge $BRIDGE:$OTLP_PORT)"
+  else
+    rm -f "$TMP_POLICY"
+    die "$a: failed to apply OTLP egress policy: $(printf '%s' "$_POLICY_OUT" | tail -1)"
+  fi
+  rm -f "$TMP_POLICY"
 
   TOML="version = 1
 
@@ -128,7 +152,7 @@ timeout_millis = 8000
     'export HOME=/sandbox HERMES_HOME=/sandbox/.hermes
      export HERMES_NEMO_RELAY_PLUGINS_TOML=/sandbox/.hermes/relay-plugins.toml
      exec /sandbox/.hermes/hermes-agent/venv/bin/python -m hermes_cli.main gateway run' \
-    > "${LOG_DIR:-$HERE/logs}/sbgw-$a.log" 2>&1 < /dev/null &
+    > "$LOG_DIR/sbgw-$a.log" 2>&1 < /dev/null &
   ok "$a: gateway restarted (port ${PORT:-unknown})"
 done
 

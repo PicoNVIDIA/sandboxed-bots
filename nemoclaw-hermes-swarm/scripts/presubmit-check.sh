@@ -9,6 +9,9 @@ hit() { printf "  \033[31mFAIL\033[0m %s\n" "$*"; fail=$((fail+1)); }
 ok()  { printf "  \033[32mok\033[0m   %s\n" "$*"; }
 
 echo "SECRETS AND CREDENTIALS"
+_masked=$(grep -rInF 'Authorization: Bearer ***' . --exclude-dir=.git --exclude='presubmit-check.sh' 2>/dev/null | head -5)
+[ -n "$_masked" ] && { hit "literal masked credentials found (replace *** with the variable):"; echo "$_masked" | sed 's/^/       /'; } \
+                    || ok "no literal masked credentials"
 pat='lsv2_pt_[A-Za-z0-9]|tvly-[A-Za-z0-9]{8}|gho_[A-Za-z0-9]{8}|github_pat_[A-Za-z0-9]|sk-[A-Za-z0-9]{16}|AKIA[0-9A-Z]{12}|-----BEGIN [A-Z ]*PRIVATE KEY'
 m=$(grep -rInE "$pat" . --exclude-dir=.git 2>/dev/null | grep -viE '\.example|placeholder|YOUR_|<your|e\.g\.|lsv2_pt_…')
 [ -n "$m" ] && { hit "credential-shaped strings found:"; echo "$m" | head -5 | sed 's/^/       /'; } || ok "no credential patterns"

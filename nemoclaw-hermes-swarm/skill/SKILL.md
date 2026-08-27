@@ -45,6 +45,8 @@ cp .env.example .env         # set INFERENCE_URL and INFERENCE_MODEL
 ./scripts/01-build-image.sh
 ./scripts/02-bootstrap-two-agents.sh
 ./scripts/e2e-test.sh
+# optional tracing after the agents work:
+./scripts/03-enable-tracing.sh
 ```
 
 Then tell the user to restart the Hermes desktop app. The profile list is read at
@@ -142,7 +144,8 @@ agent: one in the sandbox serving the api_server, one on the host that makes
 
 ```bash
 ls ~/.hermes/profiles/<agent>/ | grep gateway
-# healthy: gateway.pid gateway.lock gateway.sock gateway_state.json
+# minimum healthy state: gateway.pid gateway.lock
+# gateway.sock / gateway_state.json may be absent; trust `hermes profile list`
 ```
 
 Start it with a login shell and `setsid`, or it dies with the SSH session.

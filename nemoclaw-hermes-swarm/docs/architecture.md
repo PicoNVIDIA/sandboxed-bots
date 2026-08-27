@@ -78,7 +78,9 @@ the desktop.
 | host only | appears in the roster, every request fails |
 
 Check with `ls ~/.hermes/profiles/<agent>/ | grep gateway`. A healthy agent has
-`gateway.pid`, `gateway.lock`, `gateway.sock`, `gateway_state.json`.
+`gateway.pid` and `gateway.lock`. `gateway.sock` and `gateway_state.json` are
+version/transport dependent and may be absent on a healthy profile. The
+authoritative check is `hermes profile list` reporting `running`.
 
 ## One message in group chat
 

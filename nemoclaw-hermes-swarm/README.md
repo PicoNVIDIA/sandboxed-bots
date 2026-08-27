@@ -126,8 +126,11 @@ Diagrams for all of this, including the network boundaries and status codes:
 ./scripts/spawn-agent.sh --name gamma --role-file r.md   # role from a file
 ./scripts/spawn-agent.sh --list                          # inspect the swarm
 ./scripts/spawn-agent.sh --name gamma --destroy          # remove cleanly
-./scripts/start-swarm.sh                                 # restore after a reboot
+./scripts/start-swarm.sh                                 # restore agent gateways after a reboot
 ```
+
+`start-swarm.sh` never starts an inference server. Start your endpoint first; the
+script checks it and fails rather than managing model deployment implicitly.
 
 A new agent shares an existing inference endpoint by default, so adding one costs
 no GPU and no model load.

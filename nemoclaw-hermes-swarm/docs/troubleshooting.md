@@ -114,6 +114,15 @@ Then restart the desktop app. Healthy looks like tightly clustered uptimes.
 A lock whose PID no longer exists also blocks respawn entirely, so the bot never
 appears at all. The same script clears those.
 
+### A deleted profile reappears as `stopped`
+
+An already-running desktop app can keep polling the deleted profile name for cron
+status. That recreates a directory containing only `cron/ticker_heartbeat`,
+`ticker_last_success`, and lock files, so directory-based profile discovery shows a
+`stopped` ghost even though the sandbox, gateway, key, policy, and registered
+profile are gone. Restart the desktop app after `--destroy`, then remove the empty
+cron-only directory if it remains. Do not treat the ghost as a running agent.
+
 ### Chained tasks amplify it
 
 `@b research, @c consolidate, @a brief` deadlocks when `@b` is the silent one.
@@ -142,7 +151,8 @@ There are two gateways per agent:
 
 ```bash
 ls ~/.hermes/profiles/<name>/ | grep gateway
-# healthy: gateway.pid gateway.lock gateway.sock gateway_state.json
+# minimum healthy state: gateway.pid gateway.lock
+# gateway.sock / gateway_state.json may be absent; trust `hermes profile list`
 # broken:  nothing
 ```
 
@@ -182,8 +192,9 @@ the old value.
 ./scripts/start-swarm.sh
 ```
 
-Idempotent. Restores relays, in-sandbox gateways, port forwards, and host gateways
-for every agent it discovers, then health-checks them.
+Idempotent. Restores the in-sandbox gateway, bridge forward, and host gateway
+for agents owned by this checkout, then health-checks them. It does not start or
+manage the inference endpoint; model deployment is out of scope.
 
 ## A request from inside a sandbox is blocked
 
@@ -257,8 +268,14 @@ apparent source address. Installing into several in quick succession trips
 GitHub's unauthenticated rate limit, while a host-side `git clone` still works.
 
 `spawn-agent.sh` handles this by seeding Hermes from an already-built sandbox with
-`docker cp` instead of cloning. If you hit it manually: wait, space out spawns, or
-bake Hermes into the sandbox image.
+`docker cp` instead of cloning. The true first-agent installer path is tested with:
+
+```bash
+HERMES_SEED_FROM_SIBLING=0 ./scripts/spawn-agent.sh --name first --role-file souls/researcher.md
+```
+
+Leave the default at `1` for normal use. If upstream returns 429: wait, space out
+spawns, or bake Hermes into the sandbox image.
 
 If `/sandbox/install.log` does not exist at all, no `sandbox exec` process is
 running for that sandbox, and the spawn script is still alive, that is a separate
