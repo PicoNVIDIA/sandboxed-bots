@@ -1,4 +1,4 @@
-"""Handlers for peer-messaging.
+"""Handlers for teammates.
 
 Sends a message to a teammate bot's api_server (OpenAI-compatible
 /v1/chat/completions) and returns their reply.

@@ -1,4 +1,4 @@
-"""Tool schemas for peer-messaging — what the LLM sees."""
+"""Tool schemas for teammates — what the LLM sees."""
 
 MESSAGE_TEAMMATE = {
     "name": "message_teammate",

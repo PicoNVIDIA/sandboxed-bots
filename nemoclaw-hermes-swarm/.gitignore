@@ -1,32 +1,6 @@
-# Secrets — never commit these
-.env
-.env.local
+swarm.env
 secrets/
-*.key
-*.pem
-.run/
-
-# Per-agent runtime state
-state/
-.snapshots/
-*.stale
-*.bak
-
-# Generated policy files (spawn-agent.sh writes policy-bot-<name>.yaml)
-policies/policy-bot-*.yaml
-
-# Logs
 logs/
-*.log
-
-# Copied Hermes profiles — may contain conversation history and memories
-data/
-profiles/
-
-# Python
+*.key
+*.port
 __pycache__/
-*.pyc
-.venv/
-
-# OS
-.DS_Store

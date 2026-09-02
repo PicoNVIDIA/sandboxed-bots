@@ -1,0 +1,152 @@
+#!/usr/bin/env bash
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+#
+# swarm — run Hermes bots in NemoClaw sandboxes.
+#
+#   swarm up                 preflight, image, collector, every bot in BOTS, mesh, status
+#                            (idempotent: the same command restores a fleet after a reboot)
+#   swarm add NAME [--soul FILE | --role "text"]
+#   swarm rm NAME [--yes]
+#   swarm ls [--json]
+#   swarm status             health ladder per bot
+#   swarm test               end-to-end suite
+#   swarm traces NAME        recent spans for one bot at the collector
+#   swarm doctor             preflight plus desktop hints
+#   swarm down [--yes]       remove every bot in BOTS (sandboxes, profiles, keys)
+#
+# Run it from the host that runs OpenShell, as the user who owns ~/.hermes.
+set -euo pipefail
+
+SWARM_ROOT="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")" && pwd)"
+export SWARM_ROOT
+
+usage() { sed -n '5,17p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; }
+
+# ── config ───────────────────────────────────────────────────────────────────
+ENV_FILE="${SWARM_ENV:-$SWARM_ROOT/swarm.env}"
+if [[ ! -f "$ENV_FILE" ]]; then
+  if [[ "${1:-}" == "-h" || "${1:-}" == "--help" || -z "${1:-}" ]]; then usage; exit 2; fi
+  printf 'swarm: no config at %s\n  fix: cp %s/swarm.env.example %s && edit it\n' \
+    "$ENV_FILE" "$SWARM_ROOT" "$ENV_FILE" >&2
+  exit 2
+fi
+set -a
+# shellcheck disable=SC1090
+source "$ENV_FILE"
+set +a
+
+for v in INFERENCE_BASE_URL INFERENCE_MODEL INFERENCE_KEY_FILE HERMES_REF BOTS \
+         SANDBOX_PREFIX API_PORT_BASE BRIDGE_IP SWARM_STATE; do
+  [[ -n "${!v:-}" ]] || { printf 'swarm: %s is empty in %s\n' "$v" "$ENV_FILE" >&2; exit 2; }
+done
+: "${INFERENCE_CONTEXT_LENGTH:=131072}" "${INFERENCE_MAX_TOKENS:=8192}"
+: "${SANDBOX_MEMORY:=8Gi}" "${SANDBOX_CPU:=4}" "${TRACING:=on}" "${OTLP_PORT:=4319}"
+: "${LANGSMITH_PROJECT:=hermes-swarm}" "${LANGSMITH_ENDPOINT:=https://api.smith.langchain.com/otel}"
+INFERENCE_KEY_FILE="${INFERENCE_KEY_FILE/#\~/$HOME}"
+LANGSMITH_KEY_FILE="${LANGSMITH_KEY_FILE:-}"; LANGSMITH_KEY_FILE="${LANGSMITH_KEY_FILE/#\~/$HOME}"
+SWARM_STATE="${SWARM_STATE/#\~/$HOME}"
+export INFERENCE_KEY_FILE LANGSMITH_KEY_FILE SWARM_STATE
+
+# ── modules ──────────────────────────────────────────────────────────────────
+for m in common preflight image policy sandbox bot host mesh tracing verify; do
+  # shellcheck disable=SC1090
+  source "$SWARM_ROOT/lib/$m.sh"
+done
+export PATH="$HOME/.local/bin:$PATH"
+state_init
+
+# ── commands ─────────────────────────────────────────────────────────────────
+cmd_up() {
+  log "preflight"
+  preflight_run || die "preflight failed; fix the items above and re-run"
+  log "image"
+  image_ensure
+  if [[ "$TRACING" == "on" ]]; then
+    log "tracing collector"
+    tracing_collector_ensure
+  fi
+  local b
+  for b in $BOTS; do
+    if bot_exists "$b"; then
+      log "bot $b: restoring"
+      bot_restore "$b"
+    else
+      log "bot $b: creating"
+      bot_create "$b" "$SWARM_ROOT/souls/$b.md"
+    fi
+  done
+  log "mesh"
+  mesh_sync
+  log "status"
+  verify_all
+  host_desktop_hint
+}
+
+cmd_add() {
+  local name="${1:-}"; shift || true
+  valid_name "$name" || die "usage: swarm add NAME [--soul FILE | --role \"text\"]  (lowercase, digits, dashes)"
+  local soul="" role=""
+  while (($#)); do
+    case "$1" in
+      --soul) soul="$2"; shift 2 ;;
+      --role) role="$2"; shift 2 ;;
+      *) die "unknown flag: $1" ;;
+    esac
+  done
+  bot_exists "$name" && die "bot $name already exists (swarm rm $name first, or swarm up to restore it)"
+  if [[ -z "$soul" && -z "$role" ]]; then
+    soul="$SWARM_ROOT/souls/$name.md"
+    [[ -f "$soul" ]] || die "no souls/$name.md; pass --soul FILE or --role \"text\""
+  fi
+  if [[ -n "$role" ]]; then
+    soul="$SWARM_STATE/souls/$name.md"; mkdir -p "$(dirname "$soul")"
+    printf '# %s\n\n%s\n' "${name^}" "$role" > "$soul"
+  fi
+  image_ensure
+  [[ "$TRACING" == "on" ]] && tracing_collector_ensure
+  bot_create "$name" "$soul"
+  mesh_sync
+  verify_bot "$name"
+  host_desktop_hint
+}
+
+cmd_rm() {
+  local name="${1:-}" yes="${2:-}"
+  valid_name "$name" || die "usage: swarm rm NAME [--yes]"
+  if [[ "$yes" != "--yes" ]]; then
+    read -r -p "remove bot $name, its sandbox, profile, and key? [y/N] " a
+    [[ "$a" == y || "$a" == Y ]] || { dim "aborted"; return 0; }
+  fi
+  bot_destroy "$name"
+  mesh_forget "$name"
+}
+
+cmd_down() {
+  local yes="${1:-}" b
+  if [[ "$yes" != "--yes" ]]; then
+    read -r -p "remove every bot ($BOTS)? [y/N] " a
+    [[ "$a" == y || "$a" == Y ]] || { dim "aborted"; return 0; }
+  fi
+  for b in $(bot_list); do bot_destroy "$b"; mesh_forget "$b"; done
+}
+
+cmd_ls()      { bot_table "${1:-}"; }
+cmd_status()  { verify_all; }
+cmd_test()    { exec "$SWARM_ROOT/tests/e2e.sh"; }
+cmd_traces()  { tracing_show "${1:?usage: swarm traces NAME}"; }
+cmd_doctor()  { preflight_run; host_desktop_hint; }
+
+case "${1:-}" in
+  up)      shift; cmd_up "$@" ;;
+  add)     shift; cmd_add "$@" ;;
+  rm)      shift; cmd_rm "$@" ;;
+  ls)      shift; cmd_ls "$@" ;;
+  status)  shift; cmd_status "$@" ;;
+  test)    shift; cmd_test "$@" ;;
+  traces)  shift; cmd_traces "$@" ;;
+  doctor)  shift; cmd_doctor "$@" ;;
+  down)    shift; cmd_down "$@" ;;
+  -h|--help|help|"") usage; exit 0 ;;
+  *) usage; die "unknown command: $1" ;;
+esac

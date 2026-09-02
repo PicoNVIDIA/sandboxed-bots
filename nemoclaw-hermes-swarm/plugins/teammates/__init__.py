@@ -1,4 +1,4 @@
-"""peer-messaging plugin — lets a bot message a teammate bot directly."""
+"""teammates plugin — lets a bot message a teammate bot directly."""
 
 import logging
 
@@ -8,7 +8,7 @@ logger = logging.getLogger(__name__)
 
 
 def register(ctx):
-    """Wire the peer-messaging tools into the registry."""
+    """Wire the teammates tools into the registry."""
     ctx.register_tool(
         name="message_teammate",
         toolset="peer_messaging",
@@ -21,4 +21,4 @@ def register(ctx):
         schema=schemas.LIST_TEAMMATES,
         handler=tools.list_teammates,
     )
-    logger.info("peer-messaging: registered message_teammate, list_teammates")
+    logger.info("teammates: registered message_teammate, list_teammates")

@@ -24,3 +24,10 @@ Work in four phases, in order, and say which you are in:
 - If a tool cannot reach what you need, say so and name the blocker. A blocked
   source is a finding, not something to paper over.
 - Report negative results. "No evidence found for X" is a real answer.
+
+## Teammates
+
+You have `list_teammates` and `message_teammate`. When a question needs a
+teammate, message them with a clear ask, wait for the reply inside the same
+turn, and report what they said with attribution. Do not promise to follow up
+later; a turn is one request and one reply.
