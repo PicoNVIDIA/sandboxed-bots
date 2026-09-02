@@ -7,6 +7,9 @@
 # (no host, no Docker). Exit 0 means push.
 set -uo pipefail
 cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/.."
+# A tree copied from macOS with tar/scp carries AppleDouble ._* files; they are
+# noise, not source. Drop them so the checks below judge the real files.
+find . -name '._*' -not -path './.git/*' -delete 2>/dev/null
 
 fail=0
 say()  { printf '  %-4s %s\n' "$1" "$2"; }
@@ -20,7 +23,7 @@ hits=$(grep -rInE "$pat" . --exclude-dir=.git 2>/dev/null | grep -viE 'example|p
 
 # 2. internal hostnames and addresses
 hosts='nvaie-tme|omni-lsn|omnistation|poc-nvaie|\.nvidia\.com|10\.187\.|169\.254\.'
-hits=$(grep -rInE "$hosts" . --exclude-dir=.git 2>/dev/null | grep -viE 'inference-api\.nvidia\.com|docs\.nvidia\.com|github\.com/NVIDIA|presubmit' || true)
+hits=$(grep -rInE "$hosts" . --exclude-dir=.git --exclude='*.log' 2>/dev/null | grep -viE 'inference-api\.nvidia\.com|docs\.nvidia\.com|github\.com/NVIDIA|presubmit' || true)
 [[ -z "$hits" ]] && good "no internal hostnames" || { bad "internal hostnames:"; printf '%s\n' "$hits" | sed 's/^/         /'; }
 
 # 3. SPDX header on every source file
