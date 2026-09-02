@@ -13,6 +13,7 @@
 #   swarm test               end-to-end suite
 #   swarm traces NAME        recent spans for one bot at the collector
 #   swarm doctor             preflight plus desktop hints
+#   swarm presubmit          gate before a public push (no host needed)
 #   swarm down [--yes]       remove every bot in BOTS (sandboxes, profiles, keys)
 #
 # Run it from the host that runs OpenShell, as the user who owns ~/.hermes.
@@ -21,10 +22,11 @@ set -euo pipefail
 SWARM_ROOT="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")" && pwd)"
 export SWARM_ROOT
 
-usage() { sed -n '5,17p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; }
+usage() { sed -n '5,18p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; }
 
 # ── config ───────────────────────────────────────────────────────────────────
 ENV_FILE="${SWARM_ENV:-$SWARM_ROOT/swarm.env}"
+[[ "${1:-}" == "presubmit" ]] && exec "$SWARM_ROOT/tests/presubmit.sh"
 if [[ ! -f "$ENV_FILE" ]]; then
   if [[ "${1:-}" == "-h" || "${1:-}" == "--help" || -z "${1:-}" ]]; then usage; exit 2; fi
   printf 'swarm: no config at %s\n  fix: cp %s/swarm.env.example %s && edit it\n' \
@@ -136,6 +138,7 @@ cmd_status()  { verify_all; }
 cmd_test()    { exec "$SWARM_ROOT/tests/e2e.sh"; }
 cmd_traces()  { tracing_show "${1:?usage: swarm traces NAME}"; }
 cmd_doctor()  { preflight_run; host_desktop_hint; }
+cmd_presubmit() { exec "$SWARM_ROOT/tests/presubmit.sh"; }
 
 case "${1:-}" in
   up)      shift; cmd_up "$@" ;;
@@ -146,6 +149,7 @@ case "${1:-}" in
   test)    shift; cmd_test "$@" ;;
   traces)  shift; cmd_traces "$@" ;;
   doctor)  shift; cmd_doctor "$@" ;;
+  presubmit) shift; cmd_presubmit "$@" ;;
   down)    shift; cmd_down "$@" ;;
   -h|--help|help|"") usage; exit 0 ;;
   *) usage; die "unknown command: $1" ;;

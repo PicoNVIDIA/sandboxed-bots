@@ -1,204 +1,145 @@
-# NemoClaw Hermes Swarm
+# Hermes bots in NemoClaw sandboxes
 
-Run several [Hermes Agent](https://github.com/NousResearch/hermes-agent) instances
-on one machine, each isolated in its own NVIDIA OpenShell sandbox. The agents can
-message each other and appear together in the Hermes desktop app's group chat.
+Run a team of [Hermes Agent](https://github.com/NousResearch/hermes-agent) bots on
+one GPU host, each in its own [NVIDIA OpenShell](https://github.com/NVIDIA/OpenShell)
+sandbox managed by [NemoClaw](https://github.com/NVIDIA/NemoClaw), traced end to end
+with [NeMo Relay](https://docs.nvidia.com/nemo/relay/). Talk to them from Hermes
+Desktop as a group chat: `@researcher dig into X, then hand it to @reviewer`.
 
-Adding an agent is one command:
+One command brings it up. The same command brings it back after a reboot.
+
+```
+$ ./swarm up
+▸ preflight              18 passed, 0 failed
+▸ image                  hermes-bot:v2026.8.31 present
+▸ tracing collector      swarm-otel running on 172.18.0.1:4319
+▸ bot researcher         sandbox Ready · Hermes v0.21.0 · api_server :8490 · relay on
+▸ bot reviewer           sandbox Ready · Hermes v0.21.0 · api_server :8491 · relay on
+▸ mesh                   2 bots, 2 directed links
+▸ status                 11 ok, 0 failed
+```
+
+## Why sandboxes
+
+A Hermes bot is a persistent agent with its own memory, tools, credentials, and
+the ability to run shell commands and reach the network. A Hermes *profile* keeps
+bots from reading each other's files; it does not stop a bot from reading yours.
+
+Each bot here runs in an OpenShell sandbox: its own PID, network, and mount
+namespaces, a filesystem it owns, and egress that is denied unless a policy allows
+it. The researcher can reach the model endpoint and the collector. It cannot reach
+the host's loopback, the reviewer's files, or any site you did not list. The
+reviewer is the same, with a different list. `./swarm test` proves each of those
+claims with a live probe rather than asserting them.
+
+## What you need
+
+| | Version used to verify this example |
+|---|---|
+| Linux host with Docker | Ubuntu 24.04, Docker 29 |
+| [OpenShell](https://github.com/NVIDIA/OpenShell) + [NemoClaw](https://github.com/NVIDIA/NemoClaw) CLI | openshell 0.0.85, nemoclaw 0.0.97 |
+| Hermes Agent on the host | v0.21.0 (needed for `hermes peer` and Bot Mode) |
+| An OpenAI-compatible inference endpoint | any; the example was verified against a hosted Nemotron 3 Super endpoint |
+| Hermes Desktop on your laptop | 0.21 |
+
+No GPU on the host is required if your inference endpoint is remote. Deploying a
+model server is out of scope.
+
+## Quick start
+
+On the host, as the user who owns `~/.hermes`:
 
 ```bash
-./scripts/spawn-agent.sh --name reviewer --role "You review code for security problems."
+git clone https://github.com/NVIDIA/nemoclaw-community
+cd nemoclaw-community/examples/nemoclaw-hermes-swarm
+
+cp swarm.env.example swarm.env
+$EDITOR swarm.env                      # INFERENCE_BASE_URL and INFERENCE_MODEL
+
+umask 077
+mkdir -p ~/.secrets
+printf '%s' 'your-inference-api-key' > ~/.secrets/inference.key
+
+./swarm up                             # 8 to 12 minutes the first time
+./swarm test                           # 50 checks; expect 50 passed
 ```
+
+Then in Hermes Desktop: **Settings, Connections, Add connection, SSH**, point it at
+the host, restart the app. `researcher` and `reviewer` appear in the Bots roster.
+Make a group chat with both and try:
+
+> @researcher what changed in Hermes 0.21 for bot mode? Hand your findings to
+> @reviewer for a security read.
+
+## Day to day
+
+```bash
+./swarm add analyst --soul souls/critic.md    # a third bot, meshed to the others
+./swarm add scout --role "You find primary sources and quote them."
+./swarm ls                                    # table: bot, sandbox, port, peers, gateway
+./swarm status                                # health ladder per bot
+./swarm rm scout --yes
+./swarm traces researcher                     # relay state and collector counters
+./swarm doctor                                # preflight without changing anything
+./swarm down --yes                            # remove every bot
+```
+
+After a host reboot: `./swarm up`. Sandboxes and profiles survive; processes do not.
+
+## What is in the box
+
+```
+swarm                     the CLI; everything goes through it
+swarm.env.example         config: endpoint, model, bot list, tracing
+lib/                      one module per concern: preflight, image, policy, sandbox,
+                          bot, host, mesh, tracing, verify
+image/Dockerfile          sandbox image with Hermes pinned at a tag
+policies/                 egress policy template + the additive OTLP preset
+souls/                    roles: researcher, reviewer, critic, qa
+plugins/teammates/        message_teammate / list_teammates tool for handoffs
+observability/            NeMo Relay plugin config + OTel collector config
+tests/e2e.sh              50 live checks; tests/presubmit.sh gates a public push
+skill/SKILL.md            hand this to your own Hermes agent to run the above
+docs/                     architecture, customizing, tracing, troubleshooting
+SECURITY.md               what is protected, what is not, what the operator holds
+```
+
+## Let your agent do it
+
+`skill/SKILL.md` is a Hermes skill. Install it and your own agent can bring up,
+extend, verify, and debug a swarm on a host you point it at:
+
+```bash
+cp -r skill ~/.hermes/skills/nemoclaw-hermes-swarm
+hermes chat -q "Use the nemoclaw-hermes-swarm skill to add a bot named scout on myhost that reviews pull requests."
+```
+
+The skill carries every trap this example hit while being built, so the agent does
+not rediscover them.
 
 ## Scope
 
-This example sets up the agents, their sandboxes, their egress policies, the
-messaging between them, and the desktop wiring.
+This example does:
+
+- one sandbox per bot, deny-by-default egress, kernel namespace isolation
+- Hermes 0.21 baked into the image at a pinned tag, no per-sandbox GitHub clone
+- bot to bot handoffs through the sandbox boundary, verified with a planted secret
+- NeMo Relay traces from every bot to one OpenTelemetry collector, LangSmith optional
+- Hermes Desktop group chat over SSH, restore after reboot, a live test suite
 
 It does not:
 
-- deploy or manage an inference server
-- provision GPUs or download a model
-- create the OpenShell gateway for you
-- configure messaging platforms such as Slack or Outlook
+- deploy or tune a model server
+- run the bots on more than one host
+- expose the bots to anything but your Desktop and each other
+- link a multi-bot handoff into one trace tree (Relay emits one tree per bot turn)
 
-You supply one OpenAI-compatible inference endpoint that the sandboxes can reach.
-vLLM, SGLang, NIM, and hosted APIs all work.
+## Further reading
 
-## Prerequisites
-
-Versions below are what this was built and tested against.
-
-| Requirement | Tested with | Notes |
-|---|---|---|
-| Linux host with Docker | Docker 29.6.2 | Compose v2; the legacy `docker-compose` binary is not used |
-| OpenShell CLI and a running gateway | openshell 0.0.85 | `openshell gateway list` must show one marked `*` |
-| NemoClaw CLI | v0.0.97 | Strongly recommended: makes policy edits additive. Without it, `openshell policy set` replaces a sandbox's entire policy |
-| Hermes Agent on the host | v0.20.5, Python 3.11 | Provides the `hermes` CLI |
-| An OpenAI-compatible endpoint | any | URL, model name, and key go in `.env` |
-| Hermes desktop app | optional | Only for the Bots roster and group chat |
-
-Sandbox image: Ubuntu 24.04 with Python 3.11. Policy schema `version: 3`.
-
-You do not need a GPU on the host if your endpoint is remote.
-
-### PATH gotcha
-
-`openshell`, `nemoclaw`, and `hermes` install into `~/.local/bin`, which is added
-by `~/.profile`. Non-login shells do not read that file, so this fails:
-
-```console
-$ ssh yourhost 'openshell --version'
-bash: line 1: openshell: command not found
-```
-
-Use a login shell for remote commands:
-
-```bash
-ssh yourhost 'bash -lc "openshell --version"'
-```
-
-The desktop app probes the host the same way. `scripts/00-preflight.sh` checks it.
-
-## Quickstart
-
-Run these in order. Each step checks the previous one worked.
-
-```bash
-# 1. get the code and configure
-git clone <this-repo>
-cd nemoclaw-hermes-swarm
-cp .env.example .env
-$EDITOR .env                      # set INFERENCE_URL and INFERENCE_MODEL
-
-# 2. check prerequisites before spending time on a build
-./scripts/00-preflight.sh
-
-# 3. build the sandbox image
-./scripts/01-build-image.sh
-
-# 4. create two agents: a researcher and a critic
-./scripts/02-bootstrap-two-agents.sh
-
-# 5. confirm isolation, messaging and roster visibility
-./scripts/e2e-test.sh
-```
-
-Then restart the Hermes desktop app. Both agents appear in the Bots roster and can
-be put in a group chat together.
-
-Step 4 takes 10 to 20 minutes. Most of that is installing Hermes inside each new
-sandbox.
-
-## How it works
-
-Five parts. The first two are where people get stuck.
-
-**Two gateways per agent.** One runs inside the sandbox and serves the api_server.
-One runs on the host and is what makes `hermes profile list` report `running`. The
-desktop roster only lists agents that have the host-side gateway, so an agent with
-just the in-sandbox one works over HTTP and is invisible in the app.
-
-**The bridge, not loopback.** A sandbox has its own network namespace, so
-`127.0.0.1` inside it is the sandbox, not your host. Cross-boundary traffic uses
-`host.openshell.internal`, which resolves to the OpenShell docker bridge. If your
-inference server binds only to loopback, `Dockerfile.relay` republishes it on the
-bridge.
-
-**A sandbox per agent.** Separate PID, network, mount, and IPC namespaces, and an
-egress policy that denies by default.
-
-**Hermes inside the sandbox.** The agent's tool calls happen inside the boundary,
-so terminal commands, file writes, and network access are all subject to the
-policy.
-
-**Agent-to-agent messaging.** A plugin gives each agent a `message_teammate` tool
-that POSTs to a teammate's api_server. The teammate runs a full agent turn in its
-own sandbox and returns the answer.
-
-Diagrams for all of this, including the network boundaries and status codes:
-[docs/architecture.md](docs/architecture.md).
-
-## Managing agents
-
-```bash
-./scripts/spawn-agent.sh --name gamma --role "..."       # add
-./scripts/spawn-agent.sh --name gamma --role-file r.md   # role from a file
-./scripts/spawn-agent.sh --list                          # inspect the swarm
-./scripts/spawn-agent.sh --name gamma --destroy          # remove cleanly
-./scripts/start-swarm.sh                                 # restore agent gateways after a reboot
-```
-
-`start-swarm.sh` never starts an inference server. Start your endpoint first; the
-script checks it and fails rather than managing model deployment implicitly.
-
-A new agent shares an existing inference endpoint by default, so adding one costs
-no GPU and no model load.
-
-## Verifying it works
-
-An agent can describe its role perfectly while every tool is broken, so the test
-suite checks evidence instead of self-reports:
-
-- **Isolation**: writes a different marker to the same path in every sandbox and
-  confirms each sees only its own
-- **Messaging**: plants a random secret inside agent A's sandbox and requires agent
-  B to retrieve it through `message_teammate`
-- **Roster visibility**: asserts every profile reports `running` with a live
-  host-side gateway
-- **Policy**: confirms allowed routes return 200 and denied ones do not
-
-```bash
-./scripts/e2e-test.sh
-```
-
-## Repository layout
-
-```
-nemoclaw-hermes-swarm/
-├── README.md
-├── .env.example              # copy to .env; never commit .env
-├── Dockerfile.sandbox        # sandbox base image
-├── Dockerfile.relay          # socat relay for loopback-bound endpoints
-├── scripts/                  # preflight, build, bootstrap, spawn, test, repair
-├── policies/                 # egress policy templates
-├── plugins/peer-messaging/   # the message_teammate tool
-├── souls/                    # example agent roles
-├── observability/            # optional NeMo Relay to LangSmith tracing
-├── skill/                    # Hermes skill so an agent can drive this setup
-└── docs/                     # architecture, troubleshooting, customization
-```
-
-## Documentation
-
-| Document | Answers |
+| | |
 |---|---|
-| [docs/architecture.md](docs/architecture.md) | How the pieces fit, what crosses which boundary |
-| [docs/troubleshooting.md](docs/troubleshooting.md) | Something is broken |
-| [docs/customizing-agents.md](docs/customizing-agents.md) | Changing roles, policies, models |
-| [observability/README.md](observability/README.md) | Tracing agent runs into LangSmith |
-| [skill/README.md](skill/README.md) | Letting your own Hermes agent drive this setup |
-
-## Security notes
-
-- Egress is deny-by-default. An agent reaches only what its policy lists.
-- Policies bind to binary paths as well as hosts. Allowlisting a host is not
-  enough; the calling program must be listed too. This is the most confusing part
-  of OpenShell policies.
-- Keys live in `.env`, which is gitignored, and in per-agent key files generated at
-  runtime with `openssl rand -hex 32`.
-- The api_server dispatches terminal-capable work, so its key must be strong.
-  Hermes refuses to start with a weak one.
-- The sandbox boundary protects the agent's tools, not your model server. An
-  inference server on the host sits outside it.
-
-## Provenance
-
-Independent community contribution. Not a supported part of NemoClaw core; its
-placement in the catalog aids discovery and does not imply NVIDIA support. You
-remain responsible for your own credentials, endpoint availability, and any
-production hardening.
-
-## License
-
-Apache-2.0. See [LICENSE](LICENSE).
+| [docs/architecture.md](docs/architecture.md) | the pieces, the two gateways, the network boundaries |
+| [docs/customizing.md](docs/customizing.md) | roles, policies, models, more bots |
+| [docs/tracing.md](docs/tracing.md) | Relay, the collector, LangSmith, what a trace shows |
+| [docs/troubleshooting.md](docs/troubleshooting.md) | symptom first, in the order that finds it fastest |
+| [SECURITY.md](SECURITY.md) | threat model in plain language |

@@ -1,220 +1,167 @@
 ---
-name: hermes-swarm-setup
-description: "Use when running sandboxed Hermes agents. Spawn, debug, verify a multi-agent swarm."
-version: 1.0.0
+name: nemoclaw-hermes-swarm
+description: "Use when deploying Hermes bots in NemoClaw sandboxes. Bring up, extend, verify, and debug a sandboxed bot swarm with ./swarm."
+version: 2.0.0
 author: nemoclaw-hermes-swarm example
 license: Apache-2.0
 platforms: [macos, linux]
 metadata:
   hermes:
-    tags: [openshell, nemoclaw, sandbox, multi-agent, hermes-swarm]
+    tags: [openshell, nemoclaw, sandbox, multi-agent, hermes-bots, nemo-relay]
 ---
 
-# Sandboxed Hermes Swarm
+# Hermes bots in NemoClaw sandboxes
 
-Set up, extend, and debug several Hermes agents on one Linux host, each in its own
-OpenShell sandbox. Use this when the user wants multiple isolated agents that can
-message each other, or when an existing swarm misbehaves.
+You are operating the `nemoclaw-hermes-swarm` example. It runs several Hermes
+bots on one Linux host, each in its own OpenShell (NemoClaw) sandbox, with
+NeMo Relay tracing into an OpenTelemetry collector. Everything goes through
+one command, `./swarm`, in the example's root directory.
 
-Assumes this repository is checked out and an OpenAI-compatible inference endpoint
-already exists. Deploying an inference server is out of scope.
+The host needs Docker, `openshell`, `nemoclaw`, and Hermes 0.21+. An
+OpenAI-compatible inference endpoint must already exist; deploying a model is
+out of scope. The Hermes Desktop app runs on the user's machine and reaches
+the host over SSH.
 
-The agents run on a Linux host with Docker and OpenShell. You can drive that host
-from anywhere, including macOS over SSH, so wrap remote commands in a login shell:
-`ssh <host> 'bash -lc "..."'`.
+## Two habits first
 
-## Before touching anything
+- **Never `openshell policy set`.** It replaces a sandbox's whole policy and
+  silently drops its inference and teammate rules. Only ever add, and only
+  through `./swarm` (which uses `nemoclaw <sandbox> policy-add`).
+- **Login shell for every remote command.** `openshell`, `nemoclaw`, and
+  `hermes` live in `~/.local/bin`, which non-login shells do not put on PATH.
+  `ssh host 'openshell ...'` fails with `command not found`. Use
+  `ssh host 'bash -lc "cd ~/nemoclaw-hermes-swarm && ./swarm status"'`.
 
-Two habits that prevent most of the damage:
-
-- **Never `openshell policy set`.** It replaces a sandbox's entire policy and will
-  silently remove its inference and peer rules. Always `nemoclaw <sandbox>
-  policy-add --from-file <file> --yes`.
-- **Use a login shell for every remote command.** `openshell`, `nemoclaw`, and
-  `hermes` live in `~/.local/bin`, added by `~/.profile`, which non-login shells do
-  not read. `ssh host 'openshell --version'` fails with `command not found`. Use
-  `ssh host 'bash -lc "..."'`.
-
-## Setting up from scratch
-
-Run in order. Each step validates the previous one.
+## From nothing to a working swarm
 
 ```bash
-cp .env.example .env         # set INFERENCE_URL and INFERENCE_MODEL
-./scripts/00-preflight.sh    # fails loudly with the fix if anything is missing
-./scripts/01-build-image.sh
-./scripts/02-bootstrap-two-agents.sh
-./scripts/e2e-test.sh
-# optional tracing after the agents work:
-./scripts/03-enable-tracing.sh
+cp swarm.env.example swarm.env      # INFERENCE_BASE_URL, INFERENCE_MODEL
+umask 077; printf '%s' '<key>' > ~/.secrets/inference.key
+./swarm up
 ```
 
-Then tell the user to restart the Hermes desktop app. The profile list is read at
-launch, so agents do not appear until it restarts.
+`swarm up` runs preflight, builds the image with Hermes baked in, starts the
+collector, creates every bot in `BOTS`, wires the mesh, and prints a status
+table. First run is 8 to 12 minutes, dominated by the image build and two
+sandbox creations. Re-running is idempotent and is also how you recover after
+a reboot: existing bots are restored, missing ones are created.
 
-Step 3 takes 10-20 minutes, mostly installing Hermes inside each sandbox. A tool
-timeout is not a failure. Poll `openshell sandbox list` before concluding anything.
+Then have the user add the host in Hermes Desktop (Settings, Connections, Add
+connection, SSH) and restart the app. The roster is read at launch.
 
-## Adding one agent
+## One bot at a time
 
 ```bash
-./scripts/spawn-agent.sh --name <name> --role "<one paragraph>"
-./scripts/spawn-agent.sh --name <name> --role-file ./souls/reviewer.md
-./scripts/spawn-agent.sh --list
-./scripts/spawn-agent.sh --name <name> --destroy
+./swarm add analyst --soul souls/researcher.md   # new bot, meshed to all others
+./swarm add analyst --soul ./my-role.md
+./swarm rm analyst --yes                          # sandbox, profile, key, peers
+./swarm ls
+./swarm status                                    # health ladder per bot
+./swarm test                                      # 50-check e2e suite
+./swarm traces analyst                            # relay state + collector counters
 ```
 
-Idempotent: re-running for an existing agent repairs it rather than duplicating.
-New agents share the existing inference endpoint, so no GPU cost and no model load.
+`add` takes 3 to 4 minutes. New bots share the inference endpoint; there is no
+model load. If a tool call times out mid-`add`, do not conclude failure: run
+`./swarm status` and read the result.
 
-## Writing a good role
+## Writing a role (SOUL)
 
-The role file is the agent's system prompt and matters more than any config. Give
-it a method, not just an identity, and write the rules that stop the failures you
-care about. Two that are always worth including:
+The soul file is the bot's system prompt and matters more than any config.
+Give it a method, not just an identity. Two paragraphs that fixed observed
+failures:
 
 ```markdown
-Deliver a usable answer in THE SAME MESSAGE. Never ask the user to scope the task
-and never promise to report back later. Nothing re-prompts you, so a deferral is a
-dead end for whoever is waiting.
+Deliver a usable answer in THE SAME MESSAGE. Never ask the user to scope the
+task and never promise to report back later. Nothing re-prompts you.
 
-If a source is unreachable, report what you have and name the blocker in one line.
-Do not attempt a second or third workaround. Three failed attempts with the same
-tool means the path is closed.
+If a source is unreachable, report what you have and name the blocker in one
+line. Three failed attempts with the same tool means the path is closed.
 ```
 
-Those two paragraphs turned an observed six-minute `Operation interrupted` failure
-into a 57-second answer with ten cited sources.
+Never let a bot claim a fact a tool did not return this session. Without a
+reachable source, models produce plausible issue numbers and versions from
+training data.
 
-Never claim a fact a tool did not return this session. Agents will produce
-plausible identifiers (issue numbers, versions, states) from training data when
-they cannot reach a source. One observed case reported nine GitHub issues as open
-with zero tool calls; four were closed.
+`swarm add` appends a short Runtime section (sandbox name, endpoint, egress
+posture) and a Teammates section to whatever soul you give it.
 
-See `docs/customizing-agents.md`.
+## Diagnosing "a bot is down"
 
-## Diagnosing "an agent is down"
+In this order. Stop at the first failure.
 
-Work through these in order and stop at the first failure. Out of order is what
-wastes hours.
-
-**1. Is the user's desktop app running?** On their machine:
-
-```bash
-pgrep -f "Hermes.app/Contents/MacOS/Hermes" >/dev/null && echo RUNNING || echo DOWN
-```
-
-If DOWN, nothing on the host matters. Have them relaunch and stop. Several agents
-erroring at once with no error text is nearly always the client having exited.
-
-**2. Does the agent answer directly?**
-
-```bash
-hermes -p <agent> chat -q "Reply with exactly OK"
-```
-
-A reply means the agent is fine and the fault is desktop-side. Skip to step 4.
-
-**3. Is the engine busy?**
-
-```bash
-curl -s localhost:<engine-port>/metrics | grep num_requests_running
-nvidia-smi --query-gpu=index,utilization.gpu --format=csv,noheader
-```
-
-`1.0` plus non-zero GPU means it is thinking. Wait. Do not restart. A research turn
-legitimately runs for minutes with no visible progress.
-
-**4. Only now check backend locks.**
-
-```bash
-./scripts/fix-desktop-backends.sh
-```
-
-Restarting the desktop app is a cheap, correct first move for any room-level
-symptom. **Every in-sandbox gateway restart invalidates the desktop's backends**,
-so if you restart gateways, tell the user to relaunch the app afterwards. Never
-batch gateway restarts before a demo.
+1. **Is the Desktop app running on the user's machine?**
+   `pgrep -f "Hermes.app/Contents/MacOS/Hermes"`. Several bots erroring at once
+   with no error text is nearly always the client having exited. Relaunch.
+2. **Does the bot answer directly?** `hermes -p <bot> chat -q "Reply with OK"`
+   on the host. A reply means the bot is fine and the fault is Desktop-side.
+3. **Is the model endpoint up?** `./swarm doctor` checks auth and that the model
+   is listed. Since 0.21 a dead endpoint surfaces in Desktop as
+   `[reason: model_unavailable]` rather than a generic error.
+4. **`./swarm status`.** Each rung is a real probe: sandbox phase, api_server
+   200, a chat turn through the sandbox, relay active, host profile running.
+5. **Restart the Desktop app.** Every in-sandbox gateway restart invalidates
+   the Desktop's backend, so `swarm up` after a reboot means the user restarts
+   the app too. Never restart gateways right before a demo.
 
 ## Failures that look like something else
 
-**Agent works over HTTP but is absent from the roster.** There are two gateways per
-agent: one in the sandbox serving the api_server, one on the host that makes
-`hermes profile list` report `running`. The roster lists only the second.
-
-```bash
-ls ~/.hermes/profiles/<agent>/ | grep gateway
-# minimum healthy state: gateway.pid gateway.lock
-# gateway.sock / gateway_state.json may be absent; trust `hermes profile list`
-```
-
-Start it with a login shell and `setsid`, or it dies with the SSH session.
-
-**A bot replies `(pass)`.** Correct behaviour. The room prompt says reply only with
-something new. Read the agent's stored message before assuming a fault.
-
-**A chained task stalls.** `@b research, @c summarise, @a brief` deadlocks when
-`@b` never received the message. Everyone else correctly waits. Check whether the
-*first* agent in the chain got anything.
-
-**Install hangs.** Get the real error first:
-
-```bash
-openshell sandbox exec -n bot-<name> -- /bin/sh -c 'tail -5 /sandbox/install.log'
-```
-
-Usually a GitHub 429: sandbox egress shares one apparent source via the OpenShell
-proxy, so back-to-back installs trip the unauthenticated rate limit while a
-host-side clone still works. `spawn-agent.sh` seeds from an existing sandbox with
-`docker cp` to avoid it.
-
-**Do not probe a sandbox while a spawn is mid-install.** Concurrent execs return
-empty output and look exactly like a dead sandbox.
-
-**403 vs 502.** 403 is policy denial (host not allowed, *or the calling binary is
-not listed* — policies bind to both). 502 means policy allowed it but nothing is
-listening, usually a service bound to host loopback. Inside a sandbox `127.0.0.1`
-is the sandbox; cross the boundary with `host.openshell.internal`.
-
-## Verifying, properly
-
-Do not trust an agent's self-description. It can recite its role while every tool
-is broken.
-
-```bash
-./scripts/e2e-test.sh
-```
-
-Checks evidence: a unique marker per sandbox at the same path, a secret only a
-teammate can read, a live host gateway per profile, and allowed-vs-denied status
-codes.
+- **Bot works over HTTP but is missing from the roster.** Two gateways per bot:
+  one inside the sandbox (serves the api_server), one on the host (`hermes -p
+  <bot> gateway run`) that makes the profile report `running`. The roster
+  lists only the second. `swarm up` starts both; `swarm status` checks both.
+- **`403` vs `502` vs `000` from inside a sandbox.** 403: policy denied it
+  (host not allowed, *or the calling binary is not listed*; policies bind to
+  both). 502: allowed, but nothing listening, usually a service on host
+  loopback. 000 with `CONNECT tunnel failed, response 403` in stderr: HTTPS to
+  an unlisted host, also a denial. `127.0.0.1` inside a sandbox is the sandbox;
+  cross to the host with `host.openshell.internal`.
+- **`policy-add` says `Preset must declare preset.name`.** Files given to
+  policy-add are presets: top-level `preset: {name, description}`, no
+  `version:`. `policies/otlp-export.yaml` is the reference shape.
+- **Relay "not active" but spans arrive.** The activation line is logged at
+  INFO to `/sandbox/.hermes/logs/agent.log` inside the sandbox, not
+  `gateway.log` and not the stderr captured on the host. Trust the collector
+  counters (`./swarm traces <bot>`); they are the only delivery signal.
+- **A repeated identical prompt returns instantly and no new session appears.**
+  The api_server dedupes identical requests through its response store. Use a
+  unique token when probing.
+- **`swarm rm` printed nothing.** It asked for confirmation on a stdin that was
+  closed. Pass `--yes` when scripting.
+- **A bot replies `(pass)`.** Correct. The room prompt says reply only with
+  something new.
+- **A chained task stalls.** `@b research, @c summarise, @a brief` deadlocks
+  when `@b` never got the message. Check whether the *first* bot in the chain
+  received anything.
 
 ## Traps in your own diagnostics
 
-- **`gateway.pid` holds JSON, not a bare PID.** `ps -p $(cat gateway.pid)` reports
-  every gateway dead. Parse it, or ask `hermes profile list`.
-- **Nested shell quoting mangles API keys** and produces 401s from endpoints that
-  are fine. Read keys from files inside a script rather than interpolating through
-  `ssh '… "… \"…\" …" …'`. This produced a 401 from a port working all day.
-- **`pkill -f <pattern>` over SSH can match your own command** and kill your
-  session. Kill by exact PID.
-- **`docker ps` showing `Up` proves nothing**, and high CPU does not mean progress:
-  a deadlock busy-waits at ~100% too. Trust the combination of CPU, `read_bytes`,
-  and memory trend.
+- **`gateway.pid` holds JSON**, not a bare PID. Ask `hermes profile list`.
+- **Nested shell quoting mangles keys** and yields 401s from healthy endpoints.
+  Read keys from files inside a script; never interpolate them through
+  `ssh '… "… \"…\" …" …'`. Same for `python -c` through `sandbox exec`: two
+  shells eat the quotes. Use a heredoc on stdin.
+- **`pkill -f <pattern>` over SSH can match your own session** and kill it.
+  Patterns that include the sandbox name (`sandbox exec -n v2-x`) match the
+  ssh command that contains them. Kill by PID or by a pattern the outer
+  command cannot contain (`--timeout 0`).
+- **`docker ps` showing `Up` proves nothing.** Probe the port.
 
 ## Before claiming success
 
-Run the suite and quote the actual numbers. If something failed, say which check
-and what the error was rather than reporting a clean run.
+Run `./swarm test` and quote the numbers. If something failed, name the check
+and the error rather than reporting a clean run. Do not trust a bot's
+self-description; it can recite its role while every tool is broken.
 
-For a public change, `./scripts/presubmit-check.sh` gates credentials, internal
-hostnames, SPDX headers, syntax, and file modes.
+For a public change, `./swarm presubmit` gates secrets, internal hostnames,
+SPDX headers, and shell syntax.
 
 ## Deeper reading
 
 | Topic | File |
 |---|---|
 | How the pieces fit, network boundaries | `docs/architecture.md` |
-| Symptom-organised failures | `docs/troubleshooting.md` |
-| Roles, policies, models | `docs/customizing-agents.md` |
-| Tracing agent runs to LangSmith | `observability/README.md` |
+| Symptoms and fixes | `docs/troubleshooting.md` |
+| Roles, policies, models | `docs/customizing.md` |
+| Tracing: Relay, collector, LangSmith | `docs/tracing.md` |
+| What is and is not protected | `SECURITY.md` |
