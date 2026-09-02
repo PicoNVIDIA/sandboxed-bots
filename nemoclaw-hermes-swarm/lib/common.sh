@@ -12,8 +12,12 @@ fi
 
 log()  { printf '%s▸ %s%s\n' "$C_BOLD" "$*" "$C_OFF"; }
 ok()   { printf '  %sok%s   %s\n' "$C_GREEN" "$C_OFF" "$*"; }
-warn() { printf '  %swarn%s %s\n' "$C_YEL" "$C_OFF" "$*" >&2; }
-fail() { printf '  %sFAIL%s %s\n' "$C_RED" "$C_OFF" "$*" >&2; }
+# Everything goes to stdout, on purpose: agents' terminal tools and humans'
+# `| tee` both see one stream, and a `die` reason never gets lost in a
+# separately captured stderr (which is exactly how a bot creation once "exited
+# 1 with no error").
+warn() { printf '  %swarn%s %s\n' "$C_YEL" "$C_OFF" "$*"; }
+fail() { printf '  %sFAIL%s %s\n' "$C_RED" "$C_OFF" "$*"; }
 dim()  { printf '  %s%s%s\n' "$C_DIM" "$*" "$C_OFF"; }
 die()  { fail "$*"; exit 1; }
 

@@ -61,9 +61,18 @@ connection, SSH) and restart the app. The roster is read at launch.
 ./swarm traces analyst                            # relay state + collector counters
 ```
 
-`add` takes 3 to 4 minutes. New bots share the inference endpoint; there is no
-model load. If a tool call times out mid-`add`, do not conclude failure: run
-`./swarm status` and read the result.
+`add` takes 3 to 4 minutes, so give the terminal tool a timeout of at least
+600 seconds. New bots share the inference endpoint; there is no model load. If
+a tool call still times out mid-`add`, do not conclude failure: run
+`./swarm ls` and `./swarm status` and read the result. Re-running `add` for the
+same name is safe.
+
+`./swarm` fixes its own environment (real `HOME` from the passwd database,
+`HERMES_HOME`/`HERMES_PROFILE` cleared, `~/.local/bin` on `PATH`), so it works
+from an agent's terminal tool, where `HOME` is rewritten to the profile's
+private directory. Do not wrap it in `hermes -p`. If a bot creation ever stops
+right after `api port NNNN` with exit 1 and no error, that is the symptom of an
+older copy without this fix: the key file was looked up under the wrong home.
 
 ## Writing a role (SOUL)
 

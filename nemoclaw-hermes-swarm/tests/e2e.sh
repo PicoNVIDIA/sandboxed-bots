@@ -23,6 +23,9 @@ for m in common preflight image policy sandbox bot host mesh tracing verify; do
   # shellcheck disable=SC1090
   source "$SWARM_ROOT/lib/$m.sh"
 done
+_real_home=$(getent passwd "$(id -un)" 2>/dev/null | cut -d: -f6)
+[[ -d "${_real_home:-}" ]] && export HOME="$_real_home"
+unset HERMES_HOME HERMES_PROFILE   # see the note in ./swarm
 export PATH="$HOME/.local/bin:$PATH"
 
 PASS=0; FAIL=0

@@ -22,6 +22,21 @@ set -euo pipefail
 SWARM_ROOT="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")" && pwd)"
 export SWARM_ROOT
 
+# Run from anywhere, including a Hermes agent's terminal tool. That environment
+# gets three things wrong for us, all fixed here before anything else runs:
+#  - HOME is rewritten to <profile>/home, so ~/.secrets, ~/.swarm, and ~/.hermes
+#    all resolve into a private tree the operator never set up. Use the real
+#    home of the invoking user.
+#  - HERMES_HOME/HERMES_PROFILE point at the agent's own profile, under which
+#    `hermes profile list` shows only "default" and every host-profile step
+#    silently targets the wrong tree.
+#  - openshell/nemoclaw/hermes live in ~/.local/bin, which non-login shells do
+#    not have on PATH.
+_real_home=$(getent passwd "$(id -un)" 2>/dev/null | cut -d: -f6)
+[[ -d "${_real_home:-}" ]] && export HOME="$_real_home"
+unset HERMES_HOME HERMES_PROFILE
+export PATH="$HOME/.local/bin:$PATH"
+
 usage() { sed -n '5,18p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; }
 
 # ── config ───────────────────────────────────────────────────────────────────
@@ -55,7 +70,6 @@ for m in common preflight image policy sandbox bot host mesh tracing verify; do
   # shellcheck disable=SC1090
   source "$SWARM_ROOT/lib/$m.sh"
 done
-export PATH="$HOME/.local/bin:$PATH"
 state_init
 
 # ── commands ─────────────────────────────────────────────────────────────────
