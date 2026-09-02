@@ -32,7 +32,8 @@ export SWARM_ROOT
 #    silently targets the wrong tree.
 #  - openshell/nemoclaw/hermes live in ~/.local/bin, which non-login shells do
 #    not have on PATH.
-_real_home=$(getent passwd "$(id -un)" 2>/dev/null | cut -d: -f6)
+_real_home=$(getent passwd "$(id -un)" 2>/dev/null | cut -d: -f6 || true)   # Linux
+[[ -n "$_real_home" ]] || _real_home=$(dscl . -read "/Users/$(id -un)" NFSHomeDirectory 2>/dev/null | awk '{print $2}')   # macOS
 [[ -d "${_real_home:-}" ]] && export HOME="$_real_home"
 unset HERMES_HOME HERMES_PROFILE
 export PATH="$HOME/.local/bin:$PATH"
