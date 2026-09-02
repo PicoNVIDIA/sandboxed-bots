@@ -77,6 +77,21 @@ in the chain before debugging the rest.
 bot that says "on it, I'll report back" then does nothing. Ask for the result in
 the same message; see the soul guidance in [customizing.md](customizing.md).
 
+## Deleted bots keep reappearing as `stopped` profiles
+
+You ran `swarm rm` (or deleted profiles by hand), and a minute later
+`~/.hermes/profiles/<name>/cron/ticker_heartbeat` is back and `hermes profile
+list` shows the name as `stopped`.
+
+The Desktop's backend on the host (`hermes serve --isolated`, spawned over SSH)
+snapshots the profile list when it starts and runs a cron ticker for each one
+every 60 seconds, recreating the directory. It does not notice deletions. Find
+it with `pgrep -fa "hermes serve --isolated"`, kill it, remove its
+`~/.hermes/desktop-ssh/<hash>/` directory, delete the ghost directories once
+more, and restart the Desktop app. Desktop respawns a backend that only knows
+the profiles that exist now. `swarm rm` cannot do this for you because the
+backend belongs to the Desktop session, not to the swarm.
+
 ## A bot is missing from the roster
 
 Works from the CLI, api_server returns 200, `hermes profile list` says `stopped`.

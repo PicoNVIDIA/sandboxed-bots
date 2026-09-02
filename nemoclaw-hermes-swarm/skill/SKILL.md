@@ -137,6 +137,11 @@ In this order. Stop at the first failure.
   unique token when probing.
 - **`swarm rm` printed nothing.** It asked for confirmation on a stdin that was
   closed. Pass `--yes` when scripting.
+- **Removed bots reappear as `stopped` profiles a minute later.** The Desktop's
+  host backend (`hermes serve --isolated`) cached the profile list at start and
+  its cron ticker recreates `<profile>/cron/` every 60 s. Kill that process,
+  remove its `~/.hermes/desktop-ssh/<hash>/`, delete the ghosts, and have the
+  user restart Desktop.
 - **A bot replies `(pass)`.** Correct. The room prompt says reply only with
   something new.
 - **A chained task stalls.** `@b research, @c summarise, @a brief` deadlocks
