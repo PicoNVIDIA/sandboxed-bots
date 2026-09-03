@@ -121,13 +121,18 @@ printf '%s' 'your-inference-api-key' > ~/.secrets/inference.key
 
 **Local:** on a Mac, start Colima first (`colima start --cpu 6 --memory 14`),
 then quit and reopen Hermes Desktop after `swarm up`. The bots appear under
-Local in the Bots pane.
+**This device** in the Bots pane.
 
 **Remote:** in Desktop, **Settings → Connections → Add connection → SSH**, point
 it at the host, quit and reopen. The bots appear under that connection.
 
-Either way, `nemoclaw-researcher` and `nemoclaw-reviewer` show up. Put them in a
-group chat and try the prompt from the screenshot. If something looks dead, restart the
+Either way, this is what you're looking for:
+
+<p align="center">
+  <img src="docs/img/roster.png" alt="Nemoclaw Researcher and Nemoclaw Reviewer in the Hermes Desktop Bots roster" width="420">
+</p>
+
+Put them in a group chat and try the prompt from the screenshot. If something looks dead, restart the
 Desktop app first. Nine times out of ten the bots are fine and the client lost
 its socket.
 
