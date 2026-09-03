@@ -27,7 +27,7 @@ sandbox_create() {
   for ((i = 0; i < 30; i++)); do
     phase=$(sandbox_phase "$sb")
     [[ "$phase" == Ready ]] && { ok "sandbox $sb Ready"; return 0; }
-    [[ "$phase" == Error ]] && die "sandbox $sb entered Error (openshell sandbox logs $sb)"
+    [[ "$phase" == Error ]] && die "sandbox $sb entered Error; see: docker logs \$(docker ps -a --filter name=$sb -q | head -1)"
     sleep 6
   done
   die "sandbox $sb not Ready after 3 min (phase: ${phase:-none})"

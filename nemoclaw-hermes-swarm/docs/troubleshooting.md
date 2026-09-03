@@ -154,9 +154,17 @@ only for the initial policy at sandbox creation.
 |---|---|
 | `sandbox user 'sandbox' not found in image` | image needs a user and group literally named `sandbox` |
 | `ContainerRestarting` | image entrypoint exits; use `CMD ["sleep","infinity"]` |
+| `ContainerRestarting` and `docker logs` on the container says `OCI USER 'root' selects root` | OpenShell 0.0.101 and later refuse an image whose final `USER` is root. The Dockerfile ends with `USER sandbox`; an image built from an older revision does not, and `swarm up` rebuilds it when it sees that. Found on a fresh Ubuntu 24.04 install; OpenShell 0.0.85 accepted the root image. |
 | `missing field 'version'` | the creation policy needs `version: 3` |
 
-Creation takes about 2 minutes. `openshell sandbox create` can block after the
+`openshell sandbox logs` does not exist in the CLI. To see why a sandbox went to
+`Error`, read the Docker container behind it:
+
+```bash
+docker logs "$(docker ps -a --filter name=<sandbox> -q | head -1)" 2>&1 | tail -20
+```
+
+Creation takes about a minute. `openshell sandbox create` can block after the
 sandbox is already Ready; `swarm` bounds it and polls `sandbox list` instead.
 
 ## Hermes inside a sandbox is the wrong version or missing

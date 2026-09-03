@@ -8,10 +8,16 @@ image_tag() { printf 'hermes-bot:%s' "$HERMES_REF"; }
 image_present() { docker image inspect "$(image_tag)" >/dev/null 2>&1; }
 
 # image_ensure [--rebuild]
+# An image built by an earlier revision of this Dockerfile has OCI USER root,
+# which OpenShell 0.0.101+ refuses to start. Rebuild it rather than leaving a
+# present-but-unusable image in place.
 image_ensure() {
   if image_present && [[ "${1:-}" != "--rebuild" ]]; then
-    ok "image $(image_tag) present"
-    return 0
+    if [[ "$(docker image inspect "$(image_tag)" --format '{{.Config.User}}')" == "sandbox" ]]; then
+      ok "image $(image_tag) present"
+      return 0
+    fi
+    log "image $(image_tag) runs as root; rebuilding for current OpenShell"
   fi
   local logf="$SWARM_STATE/logs/image-build.log"
   log "building $(image_tag) (first build ~5-8 min: installs Hermes and Node)"

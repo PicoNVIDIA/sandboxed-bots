@@ -107,6 +107,20 @@ Either way you need Docker, OpenShell, NemoClaw, Hermes 0.21, and an
 OpenAI-compatible model endpoint. Model serving is out of scope; the host does
 not need a GPU if the model is somewhere else.
 
+On a machine with none of that, two installers get you there. This is the
+sequence we ran on a blank Ubuntu 24.04 VM:
+
+```bash
+curl -fsSL https://nvidia.com/nemoclaw.sh | NEMOCLAW_AGENT=hermes NEMOCLAW_NON_INTERACTIVE=1 bash
+curl -fsSL https://hermes-agent.nousresearch.com/install.sh | bash
+```
+
+The first one installs Docker, Node, OpenShell, and NemoClaw, starts the
+OpenShell gateway, then stops at its own "configure inference provider" step
+because you have not given it an NVIDIA key. That is fine. `swarm` brings its
+own endpoint; you do not need NemoClaw's onboarding to finish. Open a new login
+shell afterwards so your user picks up the `docker` group.
+
 ```bash
 git clone https://github.com/NVIDIA/nemoclaw-community
 cd nemoclaw-community/examples/nemoclaw-hermes-swarm

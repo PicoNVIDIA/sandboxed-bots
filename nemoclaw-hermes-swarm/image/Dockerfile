@@ -49,6 +49,11 @@ USER root
 # Record what was baked in, for `swarm doctor`.
 RUN echo "${HERMES_REF}" > /etc/hermes-ref
 
+# OpenShell 0.0.101+ refuses to start an image whose OCI USER is root
+# ("OCI USER 'root' selects root", ContainerRestarting). Everything swarm does
+# inside the sandbox writes under /sandbox, which this user owns.
+USER sandbox
+
 # The container must not exit: OpenShell injects its own entrypoint and a
 # returning CMD yields "ContainerRestarting".
 CMD ["sleep", "infinity"]
