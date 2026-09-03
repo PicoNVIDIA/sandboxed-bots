@@ -77,8 +77,13 @@ def remember_turn_images(session_id: str, user_message) -> None:
             _TURN_IMAGES.pop(k, None)
 
 
-def _images_in_current_turn() -> list:
-    return list(_TURN_IMAGES.get(_current_session_id(), []))
+def _images_in_current_turn(session_id: str = "") -> list:
+    # Prefer the session id the dispatcher hands the handler. The ContextVar
+    # fallback is not set on the worker threads Hermes uses when the model
+    # emits several tool calls at once, and a miss there silently drops the
+    # image from every call but the first.
+    sid = (session_id or "").strip() or _current_session_id()
+    return list(_TURN_IMAGES.get(sid, []))
 
 
 def _load_peers() -> dict:
@@ -186,7 +191,7 @@ def message_teammate(args: dict, **kwargs) -> str:
         )
 
     url = f"{peers[teammate]['url']}/v1/chat/completions"
-    images = [] if args.get("without_images") else _images_in_current_turn()
+    images = [] if args.get("without_images") else _images_in_current_turn(str(kwargs.get("session_id") or ""))
     if images:
         # Hermes appends "[Image attached at: /host/path]" hints to the text
         # when it attaches an image natively. That path is on the sender's

@@ -214,6 +214,7 @@ bot_restore() {
   bot_write_soul "$name" "$(bot_soul_file "$name")" 2>/dev/null || true
   bot_env_extras "$name"
   bot_files_extras "$name"
+  bot_toolset_extras "$name"
   bot_start "$name" "$port"
   host_profile_ensure "$name" "$port" "$key" ""
   # Re-apply tracing every time: policy-add and the env write are idempotent,

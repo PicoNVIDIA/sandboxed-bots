@@ -69,6 +69,23 @@ bot_install_extras() {
   fi
   bot_env_extras "$name"
   bot_files_extras "$name"
+  bot_toolset_extras "$name"
+}
+
+# A bot whose model sees natively has no use for the vision_analyze tool: the
+# picture is already in its context, and the tool only takes a path or URL.
+# Left on, the model reads "[Image attached at: /tmp/x.jpg]" in the message
+# text (a hint Hermes adds on the sender's side) and calls the tool on that
+# path, which does not exist in this sandbox, instead of looking at the image
+# it was given. Turn the toolset off for vision bots.
+bot_toolset_extras() {
+  local name="$1" sb
+  [[ "$(bot_vision "$name")" == on ]] || return 0
+  sb=$(sandbox_of "$name")
+  # `config set` accepts a bare toolset name here and stores the list form.
+  sbx "$sb" '$H -m hermes_cli.main config set agent.disabled_toolsets vision >/dev/null 2>&1 && echo TS-OK' 120 \
+    | grep -q TS-OK || die "could not disable the vision toolset in $sb"
+  ok "vision_analyze disabled (model sees natively)"
 }
 
 # Extra .env lines for one bot. Only nemoclaw-vss has any today.
