@@ -64,14 +64,22 @@ baked=$(docker run --rm --entrypoint /bin/sh "$(image_tag)" -c 'cat /etc/hermes-
 check "image baked ref" "$baked" "$HERMES_REF"
 
 section "3  sandboxes and isolation"
-HOST_NS="$(hostname) $(readlink /proc/self/ns/pid | tr -dc 0-9) $(readlink /proc/self/ns/net | tr -dc 0-9) $(readlink /proc/self/ns/mnt | tr -dc 0-9)"
-declare -A NS
+# On Linux the host has /proc namespaces to compare against. On macOS the
+# sandboxes run inside the Colima/Docker Desktop VM, so compare against the
+# VM's PID 1 instead (a plain container on the same daemon sees it).
+if [[ -r /proc/self/ns/pid ]]; then
+  HOST_NS="$(hostname) $(readlink /proc/self/ns/pid | tr -dc 0-9) $(readlink /proc/self/ns/net | tr -dc 0-9) $(readlink /proc/self/ns/mnt | tr -dc 0-9)"
+else
+  HOST_NS=$(docker run --rm --pid=host --network=host alpine:3 sh -c 'printf "%s %s %s %s" "$(hostname)" "$(readlink /proc/1/ns/pid | tr -dc 0-9)" "$(readlink /proc/1/ns/net | tr -dc 0-9)" "$(readlink /proc/1/ns/mnt | tr -dc 0-9)"' 2>/dev/null || echo "vm 0 0 0")
+fi
+# bash 3.2 (macOS) has no associative arrays; keep namespaces in a parallel list.
+NS_LIST=()
 for b in "${BOTS_FOUND[@]}"; do
   sb=$(sandbox_of "$b")
   check "$sb Ready" "$(sandbox_phase "$sb")" Ready
-  NS[$b]=$(sandbox_ns "$sb")
-  check "$sb pid-ns differs from host" "$([[ "$(cut -d' ' -f2 <<<"${NS[$b]}")" != "$(cut -d' ' -f2 <<<"$HOST_NS")" ]] && echo yes || echo no)" yes
-  check "$sb net-ns differs from host" "$([[ "$(cut -d' ' -f3 <<<"${NS[$b]}")" != "$(cut -d' ' -f3 <<<"$HOST_NS")" ]] && echo yes || echo no)" yes
+  ns=$(sandbox_ns "$sb"); NS_LIST+=("$ns")
+  check "$sb pid-ns differs from host" "$([[ "$(cut -d' ' -f2 <<<"$ns")" != "$(cut -d' ' -f2 <<<"$HOST_NS")" ]] && echo yes || echo no)" yes
+  check "$sb net-ns differs from host" "$([[ "$(cut -d' ' -f3 <<<"$ns")" != "$(cut -d' ' -f3 <<<"$HOST_NS")" ]] && echo yes || echo no)" yes
   mark="MARK-$b-$RANDOM"
   sbx "$sb" "echo $mark > /sandbox/whoami.txt" 30 >/dev/null
   check "$sb owns its own /sandbox/whoami.txt" "$(sbx "$sb" 'cat /sandbox/whoami.txt' 30 | tail -1)" "$mark"
@@ -80,7 +88,7 @@ for b in "${BOTS_FOUND[@]}"; do
 done
 if (( N >= 2 )); then
   a="${BOTS_FOUND[0]}"; c="${BOTS_FOUND[1]}"
-  check "pid-ns differs between $a and $c" "$([[ "$(cut -d' ' -f2 <<<"${NS[$a]}")" != "$(cut -d' ' -f2 <<<"${NS[$c]}")" ]] && echo yes || echo no)" yes
+  check "pid-ns differs between $a and $c" "$([[ "$(cut -d' ' -f2 <<<"${NS_LIST[0]}")" != "$(cut -d' ' -f2 <<<"${NS_LIST[1]}")" ]] && echo yes || echo no)" yes
 fi
 
 section "4  egress policy (deny by default)"
@@ -104,7 +112,7 @@ for b in "${BOTS_FOUND[@]}"; do
   port=$(bot_port "$b"); key=$(read_secret "$(bot_key_file "$b")")
   check "$b :$port /v1/models with key" "$(http_code "http://$HOST_API_ADDR:$port/v1/models" -H "Authorization: Bearer $key")" 200
   check "$b :$port rejects a wrong key" "$(http_code "http://$HOST_API_ADDR:$port/v1/models" -H "Authorization: Bearer wrong")" 401
-  check "$b exactly one bridge forward" "$(pgrep -fc "forward service --target-port $port ")" 1
+  check "$b exactly one bridge forward" "$(pgrep -f "forward service --target-port $port " | wc -l | tr -d ' ')" 1
 done
 
 section "6  chat turn runs inside the sandbox"

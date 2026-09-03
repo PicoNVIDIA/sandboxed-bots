@@ -171,9 +171,17 @@ and shells do not.
 ./swarm down --yes                                            # everything, sandboxes included
 ```
 
-To give a bot more reach, drop a preset at `policies/<bot>.yaml`. The researcher
-ships with one for GitHub and docs.nvidia.com; the reviewer deliberately does
-not. See [docs/customizing.md](docs/customizing.md).
+Each bot's reach is its own file. `policies/<bot>.yaml` is applied when that
+bot is created; the researcher ships with one for GitHub and docs.nvidia.com and
+the reviewer deliberately has none. To open a door on a running bot:
+
+```bash
+nemoclaw nemoclaw-reviewer policy-add --from-file policies/nemoclaw-researcher.yaml --yes
+```
+
+Only ever add. `openshell policy set` replaces the whole policy and drops the
+model and peer rules. Details and the traps in
+[docs/customizing.md](docs/customizing.md#the-policy).
 
 ## Let your own agent run this
 
@@ -204,7 +212,7 @@ plugins/teammates/         message_teammate / list_teammates
 observability/             Relay config + collector config
 tests/                     e2e.sh (50 live checks), presubmit.sh
 skill/                     hand this to your own agent
-docs/                      architecture · customizing · tracing · troubleshooting
+docs/                      see below
 SECURITY.md                what's protected, what isn't, what you hold
 ```
 
@@ -212,8 +220,8 @@ SECURITY.md                what's protected, what isn't, what you hold
 
 Does: one sandbox per bot, deny-by-default egress, Hermes 0.21 baked into the
 image, bot-to-bot handoffs through the boundary, Relay traces from every bot to
-one collector, Desktop group chat over SSH, restore after reboot, a live test
-suite.
+one collector, Desktop group chat local or over SSH, restore after reboot, a
+live test suite, macOS and Linux hosts.
 
 Does not: serve a model, span more than one host, expose bots to anything but
 your Desktop and each other, or join a multi-bot handoff into one trace tree
@@ -224,8 +232,9 @@ have yet).
 
 | | |
 |---|---|
+| [docs/local.md](docs/local.md) | running it on your own Mac or Linux box |
 | [docs/architecture.md](docs/architecture.md) | the pieces, the two gateways, the network boundaries |
-| [docs/customizing.md](docs/customizing.md) | roles, policies, models, more bots |
+| [docs/customizing.md](docs/customizing.md) | roles, policies, the model, more bots |
 | [docs/tracing.md](docs/tracing.md) | Relay, the collector, what a trace shows you |
 | [docs/troubleshooting.md](docs/troubleshooting.md) | symptom first, in the order that finds it fastest |
 | [SECURITY.md](SECURITY.md) | the threat model in plain words |
