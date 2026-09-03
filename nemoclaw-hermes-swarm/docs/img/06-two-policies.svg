@@ -21,9 +21,7 @@
   <text x="60" y="278" fill="#e5e7eb" font-size="14">docs.nvidia.com</text>
   <text x="60" y="306" fill="#e5e7eb" font-size="14">developer.nvidia.com</text>
   <text x="60" y="334" fill="#e5e7eb" font-size="14">hermes-agent.nousresearch.com</text>
-  <text x="540" y="250" fill="#76b900" font-size="11" text-anchor="end">policies/</text>
-  <text x="540" y="264" fill="#76b900" font-size="11" text-anchor="end">nemoclaw-researcher.yaml</text>
-  <line x1="426" y1="240" x2="426" y2="340" stroke="#76b900" stroke-width="1" stroke-dasharray="3,3"/>
+  <text x="60" y="362" fill="#6b7280" font-size="11">the last four come from policies/nemoclaw-researcher.yaml</text>
 
   <!-- reviewer -->
   <rect x="640" y="90" width="520" height="290" rx="12" fill="#0f1a0f" stroke="#76b900" stroke-width="2"/>
