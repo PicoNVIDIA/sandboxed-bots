@@ -31,6 +31,11 @@ host_profile_ensure() {
   # this bot can see is decided by the model config INSIDE the sandbox, and a
   # text bot that receives the image can forward it to a teammate that can.
   hermes -p "$name" config set model.supports_vision true >/dev/null 2>&1
+  # The shim's "main model" is the bot. Auxiliary calls that default to the
+  # main model (title generation, and compression if it ever triggers) would
+  # each become a second full agent turn inside the sandbox, with tools and
+  # without the image. Title generation fires on every message; turn it off.
+  hermes -p "$name" config set auxiliary.title_generation.enabled false >/dev/null 2>&1
   hermes -p "$name" config set model.base_url "http://$HOST_API_ADDR:$port/v1" >/dev/null 2>&1
   hermes -p "$name" config set model.max_tokens "$INFERENCE_MAX_TOKENS" >/dev/null 2>&1
   hermes -p "$name" config set model.context_length "$INFERENCE_CONTEXT_LENGTH" >/dev/null 2>&1
