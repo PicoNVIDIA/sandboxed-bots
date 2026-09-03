@@ -25,9 +25,12 @@ host_profile_ensure() {
   hermes -p "$name" config set providers.sandbox "$prov" >/dev/null 2>&1
   hermes -p "$name" config set model.provider sandbox >/dev/null 2>&1
   hermes -p "$name" config set model.default hermes-agent >/dev/null 2>&1
-  # The shim is itself a Hermes agent; without this it strips image parts
-  # before they reach the sandbox, and a vision bot never sees the picture.
-  hermes -p "$name" config set model.supports_vision "$(bot_vision "$name")" >/dev/null 2>&1
+  # The shim is itself a Hermes agent. With supports_vision off it strips
+  # image parts before they reach the sandbox and leaves a text note with a
+  # host path, which is useless in there. Always pass images through: whether
+  # this bot can see is decided by the model config INSIDE the sandbox, and a
+  # text bot that receives the image can forward it to a teammate that can.
+  hermes -p "$name" config set model.supports_vision true >/dev/null 2>&1
   hermes -p "$name" config set model.base_url "http://$HOST_API_ADDR:$port/v1" >/dev/null 2>&1
   hermes -p "$name" config set model.max_tokens "$INFERENCE_MAX_TOKENS" >/dev/null 2>&1
   hermes -p "$name" config set model.context_length "$INFERENCE_CONTEXT_LENGTH" >/dev/null 2>&1

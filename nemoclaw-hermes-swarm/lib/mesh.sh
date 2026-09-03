@@ -17,18 +17,25 @@ mesh_peers_of() {
     | awk -F'\t' 'NF>=2 && $2 ~ /^http/ {print $1}' || true
 }
 
-# Install the teammates plugin into a sandbox once (one tarball; per-file
-# writes drop everything after the first, and args are capped near 32KB).
+# Install the teammates plugin into a sandbox (one tarball; per-file writes
+# drop everything after the first, and args are capped near 32KB). Keyed on
+# the plugin's content hash, so editing the plugin and re-running `swarm up`
+# updates every bot instead of skipping the ones that already have a copy.
 _mesh_install_plugin() {
-  local sb="$1" tgz b64
-  sbx "$sb" 'test -f /sandbox/.hermes/plugins/teammates/plugin.yaml && echo HAVE' 60 | grep -q HAVE && return 0
+  local sb="$1" tgz b64 want have
+  want=$(cd "$SWARM_ROOT/plugins/teammates" && cat plugin.yaml __init__.py schemas.py tools.py > /tmp/teammates.$$ && sha16 /tmp/teammates.$$; rm -f /tmp/teammates.$$)
+  have=$(sbx "$sb" 'cat /sandbox/.hermes/plugins/teammates/.swarm-hash 2>/dev/null' 60 | tail -1)
+  [[ "$have" == "$want" ]] && return 0
   tgz=$(mktemp /tmp/teammates.XXXXXX.tgz)
   tar czf "$tgz" -C "$SWARM_ROOT/plugins" --exclude=__pycache__ teammates
   b64=$(b64 "$tgz"); rm -f "$tgz"
-  sbx "$sb" "mkdir -p /sandbox/.hermes/plugins && printf '%s' '$b64' | base64 -d | tar xzf - -C /sandbox/.hermes/plugins
+  sbx "$sb" "mkdir -p /sandbox/.hermes/plugins && rm -rf /sandbox/.hermes/plugins/teammates && printf '%s' '$b64' | base64 -d | tar xzf - -C /sandbox/.hermes/plugins
+printf '%s' '$want' > /sandbox/.hermes/plugins/teammates/.swarm-hash
 \$H -m hermes_cli.main plugins enable teammates >/dev/null 2>&1 || true
 test -f /sandbox/.hermes/plugins/teammates/plugin.yaml && echo PLUGIN-OK" 180 | grep -q PLUGIN-OK \
     || die "installing teammates plugin into $sb failed"
+  [[ -n "$have" ]] && dim "teammates plugin updated in $sb"
+  return 0
 }
 
 # _mesh_link A B: make A able to reach B.

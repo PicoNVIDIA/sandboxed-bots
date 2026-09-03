@@ -135,6 +135,28 @@ bot_write_soul() {
   sandbox_put "$sb" "$SWARM_STATE/relay/$name.soul.md" /sandbox/.hermes/SOUL.md
 }
 
+# What each teammate can do that this bot cannot. Generated from the fleet so
+# it stays true as bots are added: a text bot learns that nemoclaw-vision can
+# look at images and nemoclaw-vss can watch video, and is told to ask rather
+# than apologise. Empty when there is nothing to say.
+_soul_teammates_section() {
+  local me="$1" b lines=""
+  for b in $BOTS; do
+    [[ "$b" == "$me" ]] && continue
+    case "$(bot_short "$b")" in
+      vision) [[ "$(bot_vision "$me")" == on ]] || lines+="- $b can look at images. If a message has an image attached and you cannot see it, do not say so and stop: send $b a message_teammate asking what is in it, then answer from their description with attribution.
+" ;;
+      vss)    lines+="- $b can watch video files and clips. For any question about what happens in a video, ask $b via message_teammate and work from their timestamped findings.
+" ;;
+    esac
+  done
+  [[ -n "$lines" ]] || return 0
+  printf -- '- Ask a teammate for what you cannot do yourself:\n%s' "$lines" | sed 's/^- \(nemoclaw\)/  - \1/'
+  # $lines ends in a newline that heredoc substitution strips; put it back so
+  # the rule that follows starts on its own line.
+  printf '\n' 
+}
+
 _soul_runtime_section() {
   cat <<EOF
 ## Runtime
@@ -147,7 +169,7 @@ rather than guessing around it.
 
 ## Rules
 - Never invent a source, URL, number, or quote. Label inference as inference.
-- Give the result in this message rather than promising it later; a turn is one
+$(_soul_teammates_section "$1")- Give the result in this message rather than promising it later; a turn is one
   request and one reply.
 EOF
 }

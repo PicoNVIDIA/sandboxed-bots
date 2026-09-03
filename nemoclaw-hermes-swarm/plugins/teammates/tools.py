@@ -19,6 +19,61 @@ _TIMEOUT_S = 300
 _HERMES_HOME = os.environ.get("HERMES_HOME") or os.path.join(
     os.path.expanduser("~"), ".hermes"
 )
+# Images attached to the sender's current turn are forwarded to the teammate
+# as image_url parts. Cap so one handoff cannot carry an album.
+_MAX_FORWARD_IMAGES = 4
+
+
+def _current_session_id() -> str:
+    """The session this tool call belongs to, as the gateway records it."""
+    try:
+        from gateway.session_context import get_session_env  # part of Hermes
+
+        sid = get_session_env("HERMES_SESSION_ID", "")
+        if sid:
+            return sid
+    except Exception:
+        pass
+    return os.environ.get("HERMES_SESSION_ID", "")
+
+
+# session_id -> image_url parts from that session's current user turn. Filled
+# by the pre_llm_call hook in __init__.py, which Hermes fires once per turn
+# with the user message as received, before any image handling for the bot's
+# own (possibly text-only) model. A tool handler has no other view of the live
+# turn: state.db is written after the turn ends, the dispatcher passes no
+# messages, and by the time a model request is built a non-vision model has
+# already had its images replaced with text. Text crosses the sandbox boundary
+# as text; a picture the user attached to THIS bot's turn is invisible to a
+# teammate unless we carry it. Only data: and http(s) URLs are kept; paths
+# mean nothing in another sandbox.
+_TURN_IMAGES: dict = {}
+
+
+def remember_turn_images(session_id: str, user_message) -> None:
+    """Called from the pre_llm_call hook at the start of each turn."""
+    if not session_id:
+        return
+    imgs = []
+    if isinstance(user_message, list):
+        for p in user_message:
+            if not isinstance(p, dict) or p.get("type") not in ("image_url", "input_image"):
+                continue
+            ref = p.get("image_url")
+            url = (ref.get("url") if isinstance(ref, dict) else ref) or ""
+            url = str(url).strip()
+            if url.startswith(("data:image/", "http://", "https://")):
+                imgs.append({"type": "image_url", "image_url": {"url": url}})
+            if len(imgs) >= _MAX_FORWARD_IMAGES:
+                break
+    _TURN_IMAGES[session_id] = imgs
+    if len(_TURN_IMAGES) > 64:  # bounded; sessions are short-lived here
+        for k in list(_TURN_IMAGES)[:-32]:
+            _TURN_IMAGES.pop(k, None)
+
+
+def _images_in_current_turn() -> list:
+    return list(_TURN_IMAGES.get(_current_session_id(), []))
 
 
 def _load_peers() -> dict:
@@ -126,10 +181,12 @@ def message_teammate(args: dict, **kwargs) -> str:
         )
 
     url = f"{peers[teammate]['url']}/v1/chat/completions"
+    images = [] if args.get("without_images") else _images_in_current_turn()
+    content = message if not images else [{"type": "text", "text": message}, *images]
     payload = json.dumps(
         {
             "model": "hermes-agent",
-            "messages": [{"role": "user", "content": message}],
+            "messages": [{"role": "user", "content": content}],
         }
     ).encode("utf-8")
 
@@ -173,10 +230,11 @@ def message_teammate(args: dict, **kwargs) -> str:
         return json.dumps({"error": "Malformed reply from teammate", "raw": str(body)[:400]})
 
     usage = body.get("usage") or {}
-    return json.dumps(
-        {
-            "teammate": teammate,
-            "reply": reply,
-            "tokens": usage.get("total_tokens"),
-        }
-    )
+    result = {
+        "teammate": teammate,
+        "reply": reply,
+        "tokens": usage.get("total_tokens"),
+    }
+    if images:
+        result["images_forwarded"] = len(images)
+    return json.dumps(result)
