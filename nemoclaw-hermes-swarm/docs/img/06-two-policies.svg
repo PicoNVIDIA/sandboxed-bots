@@ -1,80 +1,45 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="620" viewBox="0 0 1200 620" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace">
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="520" viewBox="0 0 1200 520" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace">
   <defs>
     <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse">
       <path d="M 40 0 L 0 0 0 40" fill="none" stroke="#1a2a1a" stroke-width="0.5"/>
     </pattern>
-    <marker id="ok" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto">
-      <path d="M0,0 L8,4 L0,8 z" fill="#76b900"/>
-    </marker>
-    <marker id="no" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto">
-      <path d="M0,0 L8,4 L0,8 z" fill="#ef4444"/>
-    </marker>
+    <marker id="a" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 z" fill="#76b900"/></marker>
   </defs>
-  <rect width="1200" height="620" fill="#0b0f0b"/>
-  <rect width="1200" height="620" fill="url(#grid)"/>
+  <rect width="1200" height="520" fill="#0b0f0b"/>
+  <rect width="1200" height="520" fill="url(#grid)"/>
 
-  <text x="40" y="44" fill="#e5e7eb" font-size="22" font-weight="700">Two bots, two policies</text>
-  <text x="40" y="66" fill="#9ca3af" font-size="12">Same image, same model, same host. Different doors. Read live from OpenShell.</text>
+  <text x="40" y="48" fill="#e5e7eb" font-size="22" font-weight="700">Same bot, different doors</text>
 
-  <!-- RESEARCHER sandbox -->
-  <rect x="40" y="96" width="520" height="330" rx="12" fill="#0f1a0f" stroke="#76b900" stroke-width="2"/>
-  <text x="60" y="126" fill="#76b900" font-size="15" font-weight="700">NEMOCLAW-RESEARCHER</text>
-  <text x="60" y="144" fill="#6b7280" font-size="11">sandbox · souls/nemoclaw-researcher.md</text>
+  <!-- researcher -->
+  <rect x="40" y="90" width="520" height="290" rx="12" fill="#0f1a0f" stroke="#76b900" stroke-width="2"/>
+  <text x="60" y="124" fill="#76b900" font-size="16" font-weight="700">nemoclaw-researcher</text>
 
-  <text x="60" y="180" fill="#9ca3af" font-size="11" font-weight="700">CAN REACH</text>
-  <rect x="60" y="190" width="480" height="28" rx="5" fill="#132013" stroke="#2f4f2f"/>
-  <text x="72" y="209" fill="#e5e7eb" font-size="12">inference-api.nvidia.com:443</text>
-  <text x="536" y="209" fill="#76b900" font-size="10" text-anchor="end">inference</text>
-  <rect x="60" y="224" width="480" height="28" rx="5" fill="#132013" stroke="#2f4f2f"/>
-  <text x="72" y="243" fill="#e5e7eb" font-size="12">collector :4319</text>
-  <text x="536" y="243" fill="#76b900" font-size="10" text-anchor="end">otlp-export</text>
-  <rect x="60" y="258" width="480" height="28" rx="5" fill="#132013" stroke="#2f4f2f"/>
-  <text x="72" y="277" fill="#e5e7eb" font-size="12">nemoclaw-reviewer :8478</text>
-  <text x="536" y="277" fill="#76b900" font-size="10" text-anchor="end">peer</text>
-  <rect x="60" y="292" width="480" height="62" rx="5" fill="#1a2a12" stroke="#76b900"/>
-  <text x="72" y="310" fill="#76b900" font-size="10" font-weight="700">web-research</text>
-  <text x="536" y="310" fill="#6b7280" font-size="10" text-anchor="end">policies/nemoclaw-researcher.yaml</text>
-  <text x="72" y="328" fill="#e5e7eb" font-size="12">github.com · api.github.com · raw.githubusercontent.com</text>
-  <text x="72" y="345" fill="#e5e7eb" font-size="12">docs.nvidia.com · developer.nvidia.com</text>
+  <text x="60" y="166" fill="#e5e7eb" font-size="14">model</text>
+  <text x="60" y="194" fill="#e5e7eb" font-size="14">collector</text>
+  <text x="60" y="222" fill="#e5e7eb" font-size="14">nemoclaw-reviewer</text>
+  <text x="60" y="250" fill="#e5e7eb" font-size="14">github.com</text>
+  <text x="60" y="278" fill="#e5e7eb" font-size="14">docs.nvidia.com</text>
+  <text x="60" y="306" fill="#e5e7eb" font-size="14">developer.nvidia.com</text>
+  <text x="60" y="334" fill="#e5e7eb" font-size="14">hermes-agent.nousresearch.com</text>
+  <text x="540" y="250" fill="#76b900" font-size="11" text-anchor="end">policies/</text>
+  <text x="540" y="264" fill="#76b900" font-size="11" text-anchor="end">nemoclaw-researcher.yaml</text>
+  <line x1="426" y1="240" x2="426" y2="340" stroke="#76b900" stroke-width="1" stroke-dasharray="3,3"/>
 
-  <text x="60" y="380" fill="#9ca3af" font-size="11" font-weight="700">FILESYSTEM</text>
-  <text x="60" y="398" fill="#e5e7eb" font-size="12">rw  /sandbox  /tmp      ro  /usr  /lib  /etc</text>
+  <!-- reviewer -->
+  <rect x="640" y="90" width="520" height="290" rx="12" fill="#0f1a0f" stroke="#76b900" stroke-width="2"/>
+  <text x="660" y="124" fill="#76b900" font-size="16" font-weight="700">nemoclaw-reviewer</text>
 
-  <!-- REVIEWER sandbox -->
-  <rect x="640" y="96" width="520" height="330" rx="12" fill="#0f1a0f" stroke="#76b900" stroke-width="2"/>
-  <text x="660" y="126" fill="#76b900" font-size="15" font-weight="700">NEMOCLAW-REVIEWER</text>
-  <text x="660" y="144" fill="#6b7280" font-size="11">sandbox · souls/nemoclaw-reviewer.md</text>
+  <text x="660" y="166" fill="#e5e7eb" font-size="14">model</text>
+  <text x="660" y="194" fill="#e5e7eb" font-size="14">collector</text>
+  <text x="660" y="222" fill="#e5e7eb" font-size="14">nemoclaw-researcher</text>
+  <text x="660" y="278" fill="#6b7280" font-size="14">nothing else</text>
 
-  <text x="660" y="180" fill="#9ca3af" font-size="11" font-weight="700">CAN REACH</text>
-  <rect x="660" y="190" width="480" height="28" rx="5" fill="#132013" stroke="#2f4f2f"/>
-  <text x="672" y="209" fill="#e5e7eb" font-size="12">inference-api.nvidia.com:443</text>
-  <text x="1136" y="209" fill="#76b900" font-size="10" text-anchor="end">inference</text>
-  <rect x="660" y="224" width="480" height="28" rx="5" fill="#132013" stroke="#2f4f2f"/>
-  <text x="672" y="243" fill="#e5e7eb" font-size="12">collector :4319</text>
-  <text x="1136" y="243" fill="#76b900" font-size="10" text-anchor="end">otlp-export</text>
-  <rect x="660" y="258" width="480" height="28" rx="5" fill="#132013" stroke="#2f4f2f"/>
-  <text x="672" y="277" fill="#e5e7eb" font-size="12">nemoclaw-researcher :8477</text>
-  <text x="1136" y="277" fill="#76b900" font-size="10" text-anchor="end">peer</text>
-  <rect x="660" y="292" width="480" height="62" rx="5" fill="#140f0f" stroke="#7f1d1d" stroke-dasharray="4,3"/>
-  <text x="672" y="310" fill="#ef4444" font-size="10" font-weight="700">no web</text>
-  <text x="672" y="328" fill="#e5e7eb" font-size="12">no policies/nemoclaw-reviewer.yaml</text>
-  <text x="672" y="345" fill="#6b7280" font-size="11">on purpose: a reviewer reads what it is handed</text>
+  <!-- peer link -->
+  <line x1="562" y1="214" x2="636" y2="214" stroke="#76b900" stroke-width="2" marker-end="url(#a)"/>
+  <line x1="638" y1="226" x2="564" y2="226" stroke="#76b900" stroke-width="2" marker-end="url(#a)"/>
 
-  <text x="660" y="380" fill="#9ca3af" font-size="11" font-weight="700">FILESYSTEM</text>
-  <text x="660" y="398" fill="#e5e7eb" font-size="12">rw  /sandbox  /tmp      ro  /usr  /lib  /etc</text>
-
-  <!-- peer arrows between the two -->
-  <line x1="562" y1="268" x2="636" y2="268" stroke="#76b900" stroke-width="2" marker-end="url(#ok)"/>
-  <line x1="638" y1="278" x2="564" y2="278" stroke="#76b900" stroke-width="2" marker-end="url(#ok)"/>
-  <text x="600" y="296" fill="#76b900" font-size="10" text-anchor="middle">message_</text>
-  <text x="600" y="308" fill="#76b900" font-size="10" text-anchor="middle">teammate</text>
-
-  <!-- NEITHER row -->
-  <rect x="40" y="456" width="1120" height="110" rx="12" fill="#140f0f" stroke="#7f1d1d" stroke-width="1.5" stroke-dasharray="6,4"/>
-  <text x="60" y="484" fill="#ef4444" font-size="13" font-weight="700">NEITHER CAN REACH</text>
-  <text x="60" y="512" fill="#e5e7eb" font-size="12">the host's files  ·  the host's loopback  ·  each other's files  ·  each other's processes</text>
-  <text x="60" y="534" fill="#e5e7eb" font-size="12">any host not listed above  ·  your Desktop</text>
-  <text x="60" y="554" fill="#6b7280" font-size="11">Egress is deny by default. A door exists only because a policy file says so, and only for the bot that file names.</text>
-
-  <text x="40" y="600" fill="#6b7280" font-size="11">Same inference key in both, copied into each sandbox's own .env. Different api_server keys. `./swarm test` probes every line above.</text>
+  <!-- neither -->
+  <rect x="40" y="410" width="1120" height="70" rx="12" fill="#140f0f" stroke="#7f1d1d" stroke-width="1.5" stroke-dasharray="6,4"/>
+  <text x="60" y="440" fill="#ef4444" font-size="14" font-weight="700">neither</text>
+  <text x="60" y="464" fill="#e5e7eb" font-size="14">your files · the host · each other's files · anything not listed</text>
 </svg>
