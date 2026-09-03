@@ -85,16 +85,24 @@ printf 'VSS_BASE_URL=%s\nVSS_MODEL=%s\n' '$url' '$model' >> /sandbox/.hermes/.en
 }
 
 # Files for one bot. nemoclaw-vss gets the clips from VSS_VIDEOS_DIR.
+# `openshell sandbox upload DIR DEST` lands DIR *inside* DEST by basename, so
+# stage the clips in a directory literally named "videos" and upload that to
+# /sandbox. Seconds, versus minutes for base64 through exec.
 bot_files_extras() {
-  local name="$1" sb dir f n=0
+  local name="$1" sb dir stage n
   [[ "$(bot_short "$name")" == vss ]] || return 0
   dir="${VSS_VIDEOS_DIR:-$SWARM_ROOT/examples/videos}"
   [[ -d "$dir" ]] || { warn "VSS_VIDEOS_DIR=$dir does not exist"; return 0; }
   sb=$(sandbox_of "$name")
+  stage=$(mktemp -d /tmp/swarm-videos.XXXXXX); mkdir -p "$stage/videos"
+  n=0
   for f in "$dir"/*.mp4 "$dir"/*.webm "$dir"/*.mov; do
-    [[ -f "$f" ]] || continue
-    sandbox_put "$sb" "$f" "/sandbox/videos/$(basename "$f")"
-    n=$((n+1))
+    [[ -f "$f" ]] && { cp "$f" "$stage/videos/"; n=$((n+1)); }
   done
-  ok "$n clip(s) copied into /sandbox/videos"
+  if (( n > 0 )); then
+    timeout 300 openshell sandbox upload --no-git-ignore "$sb" "$stage/videos" /sandbox >/dev/null 2>&1 \
+      || { rm -rf "$stage"; die "uploading clips into $sb failed"; }
+  fi
+  rm -rf "$stage"
+  ok "$n clip(s) in /sandbox/videos"
 }
