@@ -152,6 +152,7 @@ _soul_teammates_section() {
   done
   [[ -n "$lines" ]] || return 0
   printf -- '- Ask a teammate for what you cannot do yourself:\n%s' "$lines" | sed 's/^- \(nemoclaw\)/  - \1/'
+  printf -- '  Ask once: one message_teammate call, then wait for the reply. Do not fire two\n  asks at the same teammate in parallel; the second one arrives without the image.\n'
   # $lines ends in a newline that heredoc substitution strips; put it back so
   # the rule that follows starts on its own line.
   printf '\n' 

@@ -192,6 +192,13 @@ def message_teammate(args: dict, **kwargs) -> str:
 
     url = f"{peers[teammate]['url']}/v1/chat/completions"
     images = [] if args.get("without_images") else _images_in_current_turn(str(kwargs.get("session_id") or ""))
+    if not images and _RE_PATH_HINT.search(message):
+        # The sender's model copied a file path or MEDIA: token into the ask
+        # but no image is riding along. Say so plainly, or a vision teammate
+        # will describe a picture it never saw.
+        message = _RE_PATH_HINT.sub("an image", message)
+        message = re.sub(r"[ \t]{2,}", " ", message).strip()
+        message += "\n\n[No image is attached to this message. If the question is about an image, say you were not given it.]"
     if images:
         # Hermes appends "[Image attached at: /host/path]" hints to the text
         # when it attaches an image natively. That path is on the sender's
