@@ -47,8 +47,9 @@ printf '%s' 'your-key' > ~/.secrets/inference.key
 First run is 8 to 12 minutes; the image build for arm64 is most of it. After
 that, `./swarm up` is under a minute.
 
-Then quit Hermes Desktop and open it again. The bots are under **Local** in the
-Bots pane. No connection to add; they're on the machine Desktop already manages.
+Then quit Hermes Desktop and open it again. The bots are under **This device**
+in the Bots pane. There is no connection to add; they're on the machine Desktop
+already manages.
 
 ## What's different from remote
 
@@ -59,15 +60,17 @@ reopen" instead of printing an SSH address. That's it.
 
 What's different in practice:
 
-- **Every bot's tools run on your laptop.** Sandboxed, with the same namespaces
-  and the same deny-by-default egress, but on the machine you type on. For a
-  demo or to learn the shape, fine. For a bot that holds credentials you care
-  about, use a remote host.
-- **Sleep pauses them.** Close the lid and the sandboxes stop with the VM.
-  `colima start` and `./swarm up` bring them back.
-- **The inference endpoint is probably remote.** Your laptop talks to it over
-  your normal network, and so do the sandboxes, through the proxy. A local vLLM
-  on the Mac itself has to bind an address the VM can reach, not `127.0.0.1`.
+Every bot's tools run on your laptop. They're sandboxed, with the same
+namespaces and the same deny-by-default egress, but the machine underneath is
+the one you type on. For a demo or to learn the shape, that's fine. For a bot
+that holds credentials you care about, use a remote host.
+
+Sleep pauses them. Close the lid and the sandboxes stop with the VM.
+`colima start` and `./swarm up` bring them back.
+
+The inference endpoint is probably remote. Your laptop talks to it over your
+normal network, and so do the sandboxes, through the proxy. A local vLLM on the
+Mac itself has to bind an address the VM can reach, not `127.0.0.1`.
 
 ## If it doesn't come up
 

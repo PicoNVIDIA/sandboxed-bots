@@ -26,17 +26,17 @@ what you can reach) and a Teammates note (how to hand work to another bot).
 Roles are identity, not hot config. To change a running bot's role: `./swarm rm`
 it, edit the file, `./swarm add` it again.
 
-### What makes a role actually work
+### What makes a role work
 
 I've watched a lot of these fail. The ones that work share a few habits.
 
-**A method, not a job title.** "You are a researcher" gets you generic output.
+Give it a method, not a job title. "You are a researcher" gets you generic output.
 A numbered procedure gets you the same shape of answer every time. Look at
 `souls/nemoclaw-researcher.md`: plan, research, try to disprove yourself, then
 write.
 
-**Rules aimed at the failure you actually saw.** Every line below exists because
-a bot did the opposite in front of us:
+Aim each rule at a failure you saw. Every line below exists because a bot did
+the opposite in front of us:
 
 ```markdown
 ## Hard rules
@@ -53,7 +53,7 @@ plausible GitHub issue numbers from training data, with confidence, unless told
 not to. One of ours reported nine issues as open. Four were closed. Zero tool
 calls that turn.
 
-**Answer now.** Nothing re-prompts a bot. "I'll look into that and report back"
+Make it answer now. Nothing re-prompts a bot. "I'll look into that and report back"
 is a dead end for whoever asked.
 
 ```markdown
@@ -61,7 +61,7 @@ Deliver a usable answer in THE SAME MESSAGE. Never ask the user to scope the
 task and never promise to report back later.
 ```
 
-**Stop after three.** A bot that hits a policy denial and tries three workarounds
+Cap the retries. A bot that hits a policy denial and tries three workarounds
 burns six minutes and ships nothing. This paragraph turned that into a 57 second
 answer with ten cited sources:
 
@@ -114,15 +114,15 @@ nemoclaw nemoclaw-reviewer policy-add --from-file policies/nemoclaw-researcher.y
 
 Things that trip everyone the first time:
 
-- **Never `openshell policy set`.** It replaces the whole policy and silently
-  drops the model and peer rules. Only ever add.
-- **Presets need `preset.name` and must not have a top-level `version`.** The
+- `openshell policy set` replaces the whole policy and silently drops the model
+  and peer rules. Only ever add.
+- A preset needs `preset.name` and must not have a top-level `version`. The
   template used at sandbox creation has `version: 3`; presets don't.
-- **Policies bind to binaries, not just hosts.** Allow `github.com` and forget
-  to list `python`, and `curl` gets 200 while the bot's own tool gets 403.
-- **Redirects are separate decisions.** `curl -L https://astral.sh` fails with
+- A rule is host plus binary. Allow `github.com` and forget to list `python`,
+  and `curl` gets 200 while the bot's own tool gets 403.
+- Each redirect is its own decision. `curl -L https://astral.sh` fails with
   `astral.sh` allowed, because the 301 lands on `releases.astral.sh`.
-- **The file has to end in `.yaml`.**
+- The file has to end in `.yaml`.
 
 Reading the status code from inside a sandbox: 403 is policy. 502 is
 allowed-but-nothing-listening, usually a service bound to the host's loopback,

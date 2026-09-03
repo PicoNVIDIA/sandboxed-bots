@@ -27,10 +27,10 @@ $ ./swarm up
 ▸ status                 11 ok, 0 failed
 ```
 
-## Why a bot is not just an agent
+## Sessions, agents, bots
 
-The word "agent" now covers three things that behave nothing alike. It's worth
-being precise, because the third one changes what you have to build around it.
+The word "agent" now covers three things that behave nothing alike, and the
+third one changes what you have to build around it.
 
 <p align="center">
   <img src="docs/img/02-session-agent-bot.svg" alt="Session vs agent vs bot" width="100%">
@@ -41,7 +41,7 @@ you and forgets you.
 
 An **agent** takes a task and runs with it. Claude Code, Codex, OpenCode, a
 Hermes CLI run. It has your shell and your editor for as long as the task lasts,
-then it exits. You started it. You're watching.
+then it exits. You started it, and you're sitting there watching it.
 
 A **bot** is what you get when an agent stops exiting. Hermes 0.21 ships this as
 Bot Mode: a bot has a name, a role, its own memory, its own credentials, tools,
@@ -55,7 +55,7 @@ has a blast radius of everything it can reach, for as long as it runs. A Hermes
 *profile* keeps two bots from reading each other's config. It does not keep a
 bot out of your home directory.
 
-So each bot here runs in a NemoClaw sandbox, and the boundary is real: its own
+Each bot here runs in a NemoClaw sandbox, and the boundary is real: its own
 PID, network, and mount namespaces, a filesystem it owns, egress denied unless a
 policy says otherwise. Here are the two default bots, read live from OpenShell:
 
@@ -69,11 +69,13 @@ and its teammate. That difference is one file, `policies/nemoclaw-researcher.yam
 and the reviewer not having one. Neither bot can reach your laptop, the host's
 loopback, or the other's files.
 
-I don't want you to take that on faith. `./swarm test` runs 50 live checks,
-including reading `/proc/self/ns/pid` from inside each sandbox to prove the
-namespaces differ, asking a bot for `hostname` to prove its tools run inside,
-and planting a secret only one bot can read to prove the handoff path is the
-only path.
+I don't want you to take that on faith. `./swarm test` runs 50 live checks.
+One reads `/proc/self/ns/pid` from inside each sandbox and fails if two bots
+share a value. One asks a bot for `hostname` through the chat and fails if the
+answer is the host's. One plants a secret where only the researcher can read it,
+asks the researcher to pass it to the reviewer, and fails unless the reviewer
+echoes it back, which means the message went through the handoff path and
+nowhere else.
 
 ## The stack, in one breath
 
@@ -133,8 +135,8 @@ Either way, this is what you're looking for:
 </p>
 
 Then **Bots → + → New group chat**, tick both, create. They sit in the picker
-next to your other bots and any remote connection; sandboxed does not mean
-hidden.
+next to your other bots and any remote connection. The sandbox limits what they
+can reach; Desktop still treats them as ordinary bots.
 
 <p align="center">
   <img src="docs/img/new-group-chat.png" alt="New group chat dialog with Nemoclaw Researcher and Nemoclaw Reviewer ticked" width="480">
@@ -184,8 +186,8 @@ You type once. The room routes to the bot you mentioned. That bot does the work
 inside its sandbox, decides the reviewer should see it, and calls
 `message_teammate`. That's one authenticated HTTP request across the bridge to
 the reviewer's api_server, which runs a turn with the reviewer's own role,
-memory, and (tighter) policy, and replies. Text crosses the wall. Files, keys,
-and shells do not.
+memory, and (tighter) policy, and replies. Only the text crosses the wall. The
+reviewer never sees the researcher's files, its key, or its shell.
 
 ## Day to day
 

@@ -64,15 +64,15 @@ otelcol_exporter_send_failed       0
 
 ## Three things that each cost an afternoon
 
-**Relay fails open.** A missing or malformed `relay-plugins.toml` logs one
+Relay fails open. A missing or malformed `relay-plugins.toml` logs one
 warning and carries on with tracing off. You get a perfectly healthy bot that
 exports nothing. Never assume it activated; read the counters.
 
-**The env var is read once, at process start.** Write the TOML or the variable
+The env var is read once, at process start. Write the TOML or the variable
 while the gateway is running and nothing happens. `swarm` restarts the gateway
 every time it touches either.
 
-**The activation line lands in `agent.log`, not `gateway.log`.** Relay logs
+The activation line lands in `agent.log`, not `gateway.log`. Relay logs
 `Relay plugins are active process-wide` at INFO through Hermes' own logger, which
 writes `/sandbox/.hermes/logs/agent.log` inside the sandbox. It's not in the
 stderr you capture on the host, and it's not in `gateway.log`. I spent a while

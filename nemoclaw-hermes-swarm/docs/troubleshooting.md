@@ -1,8 +1,8 @@
 # Troubleshooting
 
 By symptom, in the order that finds the cause fastest. Every entry here is
-something that actually broke while we built this, with the real error text. I'd
-rather you read a slightly blunt list than rediscover any of it.
+something that broke while we built this, with the real error text. I'd rather
+you read a slightly blunt list than rediscover any of it.
 
 ## Start here: is a bot really down?
 
@@ -49,8 +49,8 @@ five minutes before a demo. I have done this. It goes badly.
 
 Every health check passes and it still says nothing.
 
-**First, rule out correct behaviour.** The room prompt tells bots to reply only
-with something new; `(pass)` is a valid answer. Read what it actually said:
+First, rule out correct behaviour. The room prompt tells bots to reply only
+with something new; `(pass)` is a valid answer. Read what it said:
 
 ```bash
 openshell sandbox exec -n nemoclaw-researcher -- /sandbox/.hermes/hermes-agent/venv/bin/python - <<'PY'
@@ -61,22 +61,22 @@ for role, text in reversed(list(c.execute("select role, substr(content,1,200) fr
 PY
 ```
 
-**Then check whether the message arrived.** Search the same table for a phrase
+Then check whether the message arrived. Search the same table for a phrase
 unique to your prompt. Zero hits means the bot never got it; the fault is
 upstream of the bot.
 
-**Cause, usually: an orphaned Desktop backend.** The Desktop keeps one backend
+The usual cause is an orphaned Desktop backend. The Desktop keeps one backend
 process per profile under `~/.hermes/desktop-ssh/<hash>/backend.lock.json` on
 the host. On relaunch it can latch onto one that survived a previous session,
 which looks alive but is not wired to the current room. The tell is uptime skew:
 three backends at 10 minutes, one at 1h23m. Kill the old one, remove its lock
 directory, restart the app.
 
-**Chained tasks amplify it.** `@b research, @c consolidate, @a brief` deadlocks
+Chained tasks amplify it. `@b research, @c consolidate, @a brief` deadlocks
 when `@b` is the silent one; everyone else correctly waits. Check the first bot
 in the chain before debugging the rest.
 
-**Nothing schedules follow-up work.** A room turn is one request, one response. A
+Nothing schedules follow-up work. A room turn is one request, one response. A
 bot that says "on it, I'll report back" then does nothing. Ask for the result in
 the same message; see the soul guidance in [customizing.md](customizing.md).
 
@@ -215,16 +215,16 @@ running over SSH.
 
 ## Traps in your own diagnostics
 
-- **`gateway.pid` holds JSON.** `ps -p $(cat gateway.pid)` reports every gateway
-  dead. Ask `hermes profile list`.
-- **Nested shell quoting mangles keys.** Read them from files inside a script,
+- `gateway.pid` holds JSON, so `ps -p $(cat gateway.pid)` reports every gateway
+  dead. Ask `hermes profile list` instead.
+- Nested shell quoting mangles keys. Read them from files inside a script and
   never interpolate through `ssh '… "… \"…\" …" …'`. Same for `python -c`
   through `sandbox exec`; feed python a heredoc on stdin.
-- **`pkill -f <pattern>` over SSH can match your own session.** A pattern
+- `pkill -f <pattern>` over SSH can match your own session, because a pattern
   containing a sandbox name matches the ssh command that contains it. Kill by
   PID or by a substring the outer command cannot have.
-- **`docker ps` showing `Up` proves nothing.** Probe the port.
-- **Do not probe a sandbox while `swarm add` is mid-flight.** Concurrent execs
+- `docker ps` showing `Up` proves nothing. Probe the port.
+- Do not probe a sandbox while `swarm add` is mid-flight. Concurrent execs
   return empty output and look exactly like a dead sandbox.
 
 ## On a shared host

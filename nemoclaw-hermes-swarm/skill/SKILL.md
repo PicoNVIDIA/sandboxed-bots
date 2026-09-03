@@ -13,14 +13,14 @@ metadata:
 # Hermes bots in NemoClaw sandboxes
 
 You are operating the `nemoclaw-hermes-swarm` example. It runs several Hermes
-bots on one Linux host, each in its own OpenShell (NemoClaw) sandbox, with
-NeMo Relay tracing into an OpenTelemetry collector. Everything goes through
-one command, `./swarm`, in the example's root directory.
+bots on one machine, each in its own OpenShell (NemoClaw) sandbox, with NeMo
+Relay tracing into an OpenTelemetry collector. Everything goes through one
+command, `./swarm`, in the example's root directory.
 
-The host needs Docker, `openshell`, `nemoclaw`, and Hermes 0.21+. An
-OpenAI-compatible inference endpoint must already exist; deploying a model is
-out of scope. The Hermes Desktop app runs on the user's machine and reaches
-the host over SSH.
+The machine needs Docker, `openshell`, `nemoclaw`, and Hermes 0.21+. It can be
+a Linux host the user reaches over SSH, or the user's own Mac (Colima) or Linux
+box, where the bots appear in Desktop under "This device". An OpenAI-compatible
+inference endpoint must already exist; deploying a model is out of scope.
 
 ## Two habits first
 
@@ -46,8 +46,9 @@ table. First run is 8 to 12 minutes, dominated by the image build and two
 sandbox creations. Re-running is idempotent and is also how you recover after
 a reboot: existing bots are restored, missing ones are created.
 
-Then have the user add the host in Hermes Desktop (Settings, Connections, Add
-connection, SSH) and restart the app. The roster is read at launch.
+Then have the user restart Hermes Desktop; the roster is read at launch. For a
+remote host they first add it under Settings, Connections, Add connection, SSH.
+For their own machine there is nothing to add.
 
 ## One bot at a time
 
@@ -77,7 +78,7 @@ older copy without this fix: the key file was looked up under the wrong home.
 ## Writing a role (SOUL)
 
 The soul file is the bot's system prompt and matters more than any config.
-Give it a method, not just an identity. Two paragraphs that fixed observed
+Give it a method rather than an identity. Two paragraphs that fixed observed
 failures:
 
 ```markdown

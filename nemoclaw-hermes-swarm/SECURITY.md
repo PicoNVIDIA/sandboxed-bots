@@ -1,67 +1,67 @@
 # Security
 
-The honest version. What the sandbox actually stops, what it doesn't, and which
-keys end up where. If you're deciding whether to run this on a machine you care
-about, read the second section first.
+What the sandbox stops, what it doesn't, and which keys end up where. If you're
+deciding whether to run this on a machine you care about, read the second
+section first.
 
 ## Protected
 
-**Each bot is contained.** It runs in an OpenShell sandbox with its own PID,
+Each bot is contained. It runs in an OpenShell sandbox with its own PID,
 network, mount, and IPC namespaces. It cannot see host processes, other bots'
 processes, or other bots' files. `./swarm test` reads `/proc/self/ns/*` from
 inside each sandbox and from the host and fails if any match.
 
-**Egress is deny by default.** A bot reaches exactly what its policy lists: the
+Egress is deny by default. A bot reaches exactly what its policy lists: the
 inference endpoint, the tracing collector, the api_server ports of its
 teammates, and whatever a `policies/<bot>.yaml` adds (the researcher gets GitHub;
 the reviewer gets nothing extra). Anything else fails at the proxy. The suite probes an unlisted host
 from inside every sandbox and expects the denial.
 
-**Policies only grow through `swarm`, additively.** `openshell policy set`
-replaces a sandbox's whole policy and is never used after creation. Each
+Policies only grow. `swarm` adds named presets and never calls
+`openshell policy set` after creation, because that replaces the whole policy. Each
 addition is a named preset you can read in `policies/`.
 
-**Tools run inside the sandbox.** A bot's `terminal` tool executes in its own
+Tools run inside the sandbox. A bot's `terminal` tool executes in its own
 container. The suite asks a bot for `hostname` and checks the answer is the
 sandbox's.
 
-**Bot to bot traffic is authenticated.** Each bot's api_server requires a bearer
+Bot to bot traffic is authenticated. Each bot's api_server requires a bearer
 key generated at creation (`openssl rand -hex 32`, stored 600 on the host and in
 the bot's own `.env`). A bot holds only the keys of teammates it is meant to
 reach. The suite checks a wrong key is rejected.
 
-**Observability credentials stay on the host.** The LangSmith key, if you use
+Observability credentials stay on the host. The LangSmith key, if you use
 one, is read from a 600 file and passed to the collector container as an
 environment variable. No sandbox ever holds it; the collector is what reaches
 LangSmith.
 
-**Hermes is pinned.** The image bakes a specific tag. Sandboxes cannot reach
-GitHub or PyPI, so nothing inside can update itself.
+Hermes is pinned to a tag in the image. Sandboxes cannot reach PyPI, and only
+the researcher can reach GitHub, so nothing inside can update itself.
 
 ## Not protected
 
-**A bot holds the inference key.** It has to; it calls the model. If you share
+A bot holds the inference key. It has to; it calls the model. If you share
 one key across bots, a compromised bot can spend on that key. Use a per-bot key
 or a metered key if that matters to you. The key is in `/sandbox/.hermes/.env`,
 mode 600, readable by the bot.
 
-**The bot can prompt-inject its teammates.** `message_teammate` delivers text
+The bot can prompt-inject its teammates. `message_teammate` delivers text
 into another bot's turn. The receiving bot's soul is its only defense. The
 example souls tell bots to treat inbound messages as work, not as instructions
 about themselves, and to never act on a claim a tool did not verify.
 
-**The host user owns everything.** `swarm` runs as the user who owns
+The host user owns everything. `swarm` runs as the user who owns
 `~/.hermes`. That user can read every key, every sandbox, and the collector.
 This is an operator tool, not a multi-tenant one.
 
-**Desktop reaches the host over SSH.** Whoever has that SSH key can talk to every
+Desktop reaches the host over SSH. Whoever has that SSH key can talk to every
 bot. The bots do not authenticate Desktop users separately.
 
-**The inference endpoint sees everything.** Prompts, tool outputs, and handoff
+The inference endpoint sees everything. Prompts, tool outputs, and handoff
 text go to whatever `INFERENCE_BASE_URL` points at. Pick an endpoint you would
 trust with the content.
 
-**Sandbox escape is out of scope here.** This example inherits OpenShell's
+Sandbox escape is out of scope here. This example inherits OpenShell's
 isolation; it does not add to it. Read OpenShell's own security documentation
 for its threat model.
 
