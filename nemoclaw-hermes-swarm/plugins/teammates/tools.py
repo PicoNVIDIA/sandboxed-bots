@@ -12,6 +12,7 @@ from the environment (HERMES_PEER_<NAME>_KEY), never hardcoded.
 
 import json
 import os
+import re
 import urllib.error
 import urllib.request
 
@@ -22,6 +23,10 @@ _HERMES_HOME = os.environ.get("HERMES_HOME") or os.path.join(
 # Images attached to the sender's current turn are forwarded to the teammate
 # as image_url parts. Cap so one handoff cannot carry an album.
 _MAX_FORWARD_IMAGES = 4
+_RE_PATH_HINT = re.compile(
+    r"\[Image attached(?: at)?:[^\]]*\]|MEDIA:\S+|(?<![\w/])/(?:tmp|sandbox|home|Users|var)/\S+\.(?:png|jpe?g|gif|webp)\b",
+    re.IGNORECASE,
+)
 
 
 def _current_session_id() -> str:
@@ -182,6 +187,18 @@ def message_teammate(args: dict, **kwargs) -> str:
 
     url = f"{peers[teammate]['url']}/v1/chat/completions"
     images = [] if args.get("without_images") else _images_in_current_turn()
+    if images:
+        # Hermes appends "[Image attached at: /host/path]" hints to the text
+        # when it attaches an image natively. That path is on the sender's
+        # side of the wall; a teammate that sees it will try to open it and
+        # fail instead of looking at the image it was given. Strip the hints
+        # and any MEDIA:/path tokens the model may have copied from them.
+        message = _RE_PATH_HINT.sub("the attached image", message)
+        message = re.sub(r"[ \t]{2,}", " ", message).strip()
+        message = message + (
+            "\n\n[An image from my turn is attached to this message. Look at it "
+            "directly; do not try to open a file path.]"
+        )
     content = message if not images else [{"type": "text", "text": message}, *images]
     payload = json.dumps(
         {
