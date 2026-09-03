@@ -132,7 +132,15 @@ Either way, this is what you're looking for:
   <img src="docs/img/roster.png" alt="Nemoclaw Researcher and Nemoclaw Reviewer in the Hermes Desktop Bots roster" width="420">
 </p>
 
-Put them in a group chat and try the prompt from the screenshot. If something looks dead, restart the
+Then **Bots → + → New group chat**, tick both, create. They sit in the picker
+next to your other bots and any remote connection; sandboxed does not mean
+hidden.
+
+<p align="center">
+  <img src="docs/img/new-group-chat.png" alt="New group chat dialog with Nemoclaw Researcher and Nemoclaw Reviewer ticked" width="480">
+</p>
+
+Try the prompt from the screenshot at the top. If something looks dead, restart the
 Desktop app first. Nine times out of ten the bots are fine and the client lost
 its socket.
 
