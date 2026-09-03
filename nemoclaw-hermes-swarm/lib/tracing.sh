@@ -44,7 +44,7 @@ collector_running() { [[ "$(docker inspect -f '{{.State.Running}}' "$COLLECTOR_N
 tracing_collector_ensure() {
   local cfg; cfg=$(_collector_render)
   local want have
-  want=$(sha256sum "$cfg" | cut -c1-16)
+  want=$(sha16 "$cfg")
   have=$(docker inspect -f '{{index .Config.Labels "swarm.config"}}' "$COLLECTOR_NAME" 2>/dev/null || true)
   if collector_running && [[ "$have" == "$want" ]]; then
     ok "collector $COLLECTOR_NAME running on $BRIDGE_IP:$OTLP_PORT"

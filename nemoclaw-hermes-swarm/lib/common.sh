@@ -113,6 +113,8 @@ host_reach_addr() {
   fi
 }
 is_macos() { [[ "$(uname -s)" == Darwin ]]; }
+# First 16 hex of a file's SHA-256; coreutils or macOS shasum.
+sha16() { { sha256sum "$1" 2>/dev/null || shasum -a 256 "$1"; } | cut -c1-16; }
 # Octal permission bits of a file (600), GNU or BSD stat.
 file_mode() { stat -c '%a' "$1" 2>/dev/null || stat -f '%Lp' "$1" 2>/dev/null; }
 # macOS has no `timeout` unless coreutils is installed as gtimeout.
