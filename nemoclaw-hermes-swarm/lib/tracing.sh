@@ -51,24 +51,34 @@ tracing_collector_ensure() {
     return 0
   fi
   docker rm -f "$COLLECTOR_NAME" >/dev/null 2>&1 || true
-  local -a envargs=()
+  # Bind the OTLP port on the bridge only, so sandboxes reach it and the LAN
+  # does not. On macOS the bridge is inside the Colima/Docker Desktop VM and is
+  # not a host interface, so bind to all VM interfaces instead; the VM itself is
+  # not exposed to the LAN.
+  local otlp_bind="$BRIDGE_IP:$OTLP_PORT:$OTLP_PORT"
+  is_macos && otlp_bind="$OTLP_PORT:$OTLP_PORT"
+  # bash 3.2 (macOS) treats an empty array as unset under `set -u`.
+  local key_env=""
   if [[ -n "$LANGSMITH_KEY_FILE" && -f "$LANGSMITH_KEY_FILE" ]]; then
-    envargs=(-e "LANGSMITH_API_KEY=$(read_secret "$LANGSMITH_KEY_FILE")")
+    key_env="LANGSMITH_API_KEY=$(read_secret "$LANGSMITH_KEY_FILE")"
   fi
   docker run -d --name "$COLLECTOR_NAME" --restart unless-stopped \
     --label "swarm.config=$want" \
-    -p "$BRIDGE_IP:$OTLP_PORT:$OTLP_PORT" -p "127.0.0.1:${OTLP_METRICS_PORT:-8889}:8888" \
-    "${envargs[@]}" \
+    -p "$otlp_bind" -p "127.0.0.1:${OTLP_METRICS_PORT:-8889}:8888" \
+    ${key_env:+-e "$key_env"} \
     -v "$cfg:/etc/otelcol-contrib/config.yaml:ro" \
     "$COLLECTOR_IMAGE" --config /etc/otelcol-contrib/config.yaml >/dev/null \
     || die "collector failed to start (docker logs $COLLECTOR_NAME)"
+  # Probe from the host side. On macOS the bridge is inside the VM, so probe
+  # loopback (the same publish covers both).
+  local probe="$BRIDGE_IP"; is_macos && probe=127.0.0.1
   local i
   for ((i = 0; i < 20; i++)); do
-    [[ "$(http_code "http://$BRIDGE_IP:$OTLP_PORT/v1/traces" -X POST -H 'Content-Type: application/json' -d '{}')" =~ ^(200|400|415)$ ]] \
-      && { ok "collector listening on $BRIDGE_IP:$OTLP_PORT"; return 0; }
+    [[ "$(http_code "http://$probe:$OTLP_PORT/v1/traces" -X POST -H 'Content-Type: application/json' -d '{}')" =~ ^(200|400|415)$ ]] \
+      && { ok "collector listening on $BRIDGE_IP:$OTLP_PORT (sandbox side)"; return 0; }
     sleep 2
   done
-  die "collector not answering on $BRIDGE_IP:$OTLP_PORT (docker logs $COLLECTOR_NAME)"
+  die "collector not answering on $probe:$OTLP_PORT (docker logs $COLLECTOR_NAME)"
 }
 
 # Per bot: relay-plugins.toml + env var + egress policy. Caller restarts the gateway.

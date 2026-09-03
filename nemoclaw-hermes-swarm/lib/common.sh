@@ -70,7 +70,21 @@ http_code() {
 daemonize() {
   local logf="$1"; shift
   mkdir -p "$(dirname "$logf")"
-  nohup setsid "$@" > "$logf" 2>&1 < /dev/null &
+  if command -v setsid >/dev/null 2>&1; then
+    nohup setsid "$@" > "$logf" 2>&1 < /dev/null &
+  else
+    # macOS has no setsid; nohup + disown is enough to outlive this shell.
+    nohup "$@" > "$logf" 2>&1 < /dev/null &
+    disown 2>/dev/null || true
+  fi
+}
+
+# Delete lines matching a pattern in place; GNU and BSD sed differ on -i.
+sed_delete() { # sed_delete PATTERN FILE
+  local tmp; tmp=$(mktemp "${2}.XXXXXX")
+  grep -v -- "$1" "$2" > "$tmp" || true
+  chmod --reference="$2" "$tmp" 2>/dev/null || chmod 600 "$tmp"
+  mv "$tmp" "$2"
 }
 
 # Kill every process whose full command line matches the pattern. Quiet.
@@ -81,6 +95,30 @@ state_init() {
   mkdir -p "$SWARM_STATE"/{keys,policies,logs,relay}
   chmod 700 "$SWARM_STATE" "$SWARM_STATE/keys"
 }
+
+# ── Portability (Linux hosts and macOS with Colima or Docker Desktop) ────────
+# GNU base64 wraps at 76 columns unless told -w0; macOS base64 has no -w.
+b64() { base64 < "${1:-/dev/stdin}" | tr -d '\n'; }
+# Is anything listening on TCP port $1 on this host?
+port_in_use() {
+  if command -v ss >/dev/null 2>&1; then ss -lnt 2>/dev/null | grep -q ":$1 "
+  else lsof -nP -iTCP:"$1" -sTCP:LISTEN >/dev/null 2>&1; fi
+}
+# Best-guess address someone else would SSH to. Empty on a laptop is fine.
+host_reach_addr() {
+  if command -v hostname >/dev/null 2>&1 && hostname -I >/dev/null 2>&1; then
+    hostname -I | tr ' ' '\n' | grep -vE '^(127\.|169\.254\.|172\.1[6-9]\.|172\.2[0-9]\.|172\.3[01]\.)' | head -1
+  else
+    ipconfig getifaddr en0 2>/dev/null || true
+  fi
+}
+is_macos() { [[ "$(uname -s)" == Darwin ]]; }
+# Octal permission bits of a file (600), GNU or BSD stat.
+file_mode() { stat -c '%a' "$1" 2>/dev/null || stat -f '%Lp' "$1" 2>/dev/null; }
+# macOS has no `timeout` unless coreutils is installed as gtimeout.
+if ! command -v timeout >/dev/null 2>&1 && command -v gtimeout >/dev/null 2>&1; then
+  timeout() { gtimeout "$@"; }
+fi
 
 bot_key_file()  { printf '%s/keys/%s.key' "$SWARM_STATE" "$1"; }
 bot_port_file() { printf '%s/keys/%s.port' "$SWARM_STATE" "$1"; }

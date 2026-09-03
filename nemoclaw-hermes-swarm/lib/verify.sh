@@ -20,7 +20,7 @@ verify_bot() {
   else v_fail "sandbox $sb: $(sandbox_phase "$sb")"; return 1; fi
 
   [[ -n "$port" && -n "$key" ]] || { v_fail "no port/key in $SWARM_STATE/keys"; return 1; }
-  code=$(http_code "http://$BRIDGE_IP:$port/v1/models" -H "Authorization: Bearer $key")
+  code=$(http_code "http://$HOST_API_ADDR:$port/v1/models" -H "Authorization: Bearer $key")
   if [[ "$code" == 200 ]]; then v_ok "api_server :$port 200"
   else v_fail "api_server :$port $code (000 = forward down, 401 = key mismatch)"; return 1; fi
 

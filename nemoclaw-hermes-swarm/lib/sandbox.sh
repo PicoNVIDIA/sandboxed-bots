@@ -53,7 +53,7 @@ sbx() {
   local pre='export HOME=/sandbox HERMES_HOME=/sandbox/.hermes PATH=/sandbox/.hermes/hermes-agent/venv/bin:/usr/local/bin:/usr/bin:/bin; H=/sandbox/.hermes/hermes-agent/venv/bin/python; '
   if (( ${#script} > 28000 )); then
     local b64 chunk f=/tmp/sbx-$RANDOM.sh
-    b64=$(printf '%s' "$script" | base64 -w0)
+    b64=$(printf '%s' "$script" | b64)
     timeout 60 openshell sandbox exec -n "$sb" --timeout 50 -- /bin/sh -c ": > $f" >/dev/null 2>&1
     while [[ -n "$b64" ]]; do
       chunk="${b64:0:20000}"; b64="${b64:20000}"
@@ -69,7 +69,7 @@ sbx() {
 # exec because `sandbox upload` creates a directory at DEST.
 sandbox_put() {
   local sb="$1" src="$2" dest="$3" b64
-  b64=$(base64 -w0 < "$src")
+  b64=$(b64 "$src")
   sbx "$sb" "mkdir -p $(dirname "$dest") && printf '%s' '$b64' | base64 -d > $dest && chmod 600 $dest && echo PUT-OK" 120 \
     | grep -q PUT-OK || die "failed to write $dest into $sb"
 }

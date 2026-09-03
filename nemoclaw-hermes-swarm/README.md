@@ -79,16 +79,23 @@ only path.
 
 ## Ten minutes to a working swarm
 
-You need a Linux host with Docker, OpenShell, NemoClaw, and Hermes 0.21, plus an
-OpenAI-compatible model endpoint (NIM, a hosted API, vLLM, SGLang). The host
-does not need a GPU if the endpoint is elsewhere. Model serving is out of scope.
+Two ways to run it. Same command, same bots, same tests.
+
+| | Where the bots run | Good for |
+|---|---|---|
+| **Local** | your Mac or Linux box, sandboxed, next to Desktop | trying it, demos, one person |
+| **Remote** | a Linux host you SSH to | a team, GPUs on the host, always-on bots |
+
+Either way you need Docker, OpenShell, NemoClaw, Hermes 0.21, and an
+OpenAI-compatible model endpoint. Model serving is out of scope; the host does
+not need a GPU if the model is somewhere else.
 
 ```bash
 git clone https://github.com/NVIDIA/nemoclaw-community
 cd nemoclaw-community/examples/nemoclaw-hermes-swarm
 
 cp swarm.env.example swarm.env
-$EDITOR swarm.env                      # INFERENCE_BASE_URL and INFERENCE_MODEL
+$EDITOR swarm.env                      # INFERENCE_BASE_URL and INFERENCE_MODEL (see below)
 
 umask 077; mkdir -p ~/.secrets
 printf '%s' 'your-inference-api-key' > ~/.secrets/inference.key
@@ -97,13 +104,47 @@ printf '%s' 'your-inference-api-key' > ~/.secrets/inference.key
 ./swarm test                           # expect: 50 passed, 0 failed
 ```
 
-Then in Hermes Desktop: **Settings → Connections → Add connection → SSH**,
-point it at the host, quit and reopen the app. `nemoclaw-researcher` and
-`nemoclaw-reviewer` show up in the Bots pane. Put them in a group chat and try
-the prompt at the top.
+**Local:** on a Mac, start Colima first (`colima start --cpu 6 --memory 14`),
+then quit and reopen Hermes Desktop after `swarm up`. The bots appear under
+Local in the Bots pane.
 
-If something looks dead, restart the Desktop app first. Nine times out of ten
-the bots are fine and the client lost its socket.
+**Remote:** in Desktop, **Settings → Connections → Add connection → SSH**, point
+it at the host, quit and reopen. The bots appear under that connection.
+
+Either way, `nemoclaw-researcher` and `nemoclaw-reviewer` show up. Put them in a
+group chat and try the prompt at the top. If something looks dead, restart the
+Desktop app first. Nine times out of ten the bots are fine and the client lost
+its socket.
+
+## Attaching a model
+
+Every bot talks to one model through one OpenAI-compatible endpoint. Three
+lines in `swarm.env` and one file hold all of it:
+
+```bash
+INFERENCE_BASE_URL=https://inference-api.nvidia.com/v1    # anything that speaks /v1/chat/completions
+INFERENCE_MODEL=nvidia/nvidia/nemotron-3-super-v3         # must handle tool calls; a bot is nothing but tool calls
+INFERENCE_KEY_FILE=$HOME/.secrets/inference.key           # mode 600, read by swarm, copied into each sandbox
+```
+
+What happens to the key: `swarm` reads it from that file on the host and writes
+it into each sandbox's own `/sandbox/.hermes/.env`. It never appears in a
+policy, a log, the repo, or another bot's sandbox. The egress policy is derived
+from the URL, so the bot can reach exactly that host and port and nothing else.
+
+Tested endpoints: the NVIDIA inference API (above), and local vLLM on the same
+host. For a local server bound to `127.0.0.1`, use the bridge address instead;
+a sandbox has its own network namespace and cannot see host loopback:
+
+```bash
+INFERENCE_BASE_URL=http://172.18.0.1:8000/v1               # not 127.0.0.1
+```
+
+`./swarm doctor` checks the key, the endpoint, and that the model is listed
+before anything gets built. To change the model later, edit `swarm.env` and run
+`./swarm up`; it rewrites every bot's model config in place. Changing to a
+different *host* also needs a rebuild of the bots so the policy allows it; see
+[docs/customizing.md](docs/customizing.md#the-model).
 
 ## What a handoff looks like
 

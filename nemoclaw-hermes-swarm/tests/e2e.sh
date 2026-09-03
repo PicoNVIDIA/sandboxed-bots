@@ -18,7 +18,10 @@ source "$ENV_FILE"; set +a
 : "${TRACING:=on}" "${OTLP_PORT:=4319}" "${LANGSMITH_PROJECT:=hermes-swarm}" "${INFERENCE_CONTEXT_LENGTH:=131072}" "${INFERENCE_MAX_TOKENS:=8192}"
 INFERENCE_KEY_FILE="${INFERENCE_KEY_FILE/#\~/$HOME}"; SWARM_STATE="${SWARM_STATE/#\~/$HOME}"
 LANGSMITH_KEY_FILE="${LANGSMITH_KEY_FILE:-}"; LANGSMITH_KEY_FILE="${LANGSMITH_KEY_FILE/#\~/$HOME}"
-export INFERENCE_KEY_FILE LANGSMITH_KEY_FILE SWARM_STATE
+if [[ -z "${HOST_API_ADDR:-}" ]]; then
+  if [[ "$(uname -s)" == Darwin ]]; then HOST_API_ADDR=127.0.0.1; else HOST_API_ADDR="$BRIDGE_IP"; fi
+fi
+export INFERENCE_KEY_FILE LANGSMITH_KEY_FILE SWARM_STATE HOST_API_ADDR
 for m in common preflight image policy sandbox bot host mesh tracing verify; do
   # shellcheck disable=SC1090
   source "$SWARM_ROOT/lib/$m.sh"
@@ -27,7 +30,7 @@ _real_home=$(getent passwd "$(id -un)" 2>/dev/null | cut -d: -f6 || true)   # Li
 [[ -n "$_real_home" ]] || _real_home=$(dscl . -read "/Users/$(id -un)" NFSHomeDirectory 2>/dev/null | awk '{print $2}')   # macOS
 [[ -d "${_real_home:-}" ]] && export HOME="$_real_home"
 unset HERMES_HOME HERMES_PROFILE   # see the note in ./swarm
-export PATH="$HOME/.local/bin:$PATH"
+export PATH="/opt/homebrew/bin:$HOME/.local/bin:$PATH"
 
 PASS=0; FAIL=0
 t_pass() { printf '    %sPASS%s  %s\n' "$C_GREEN" "$C_OFF" "$1"; PASS=$((PASS + 1)); }
@@ -47,7 +50,7 @@ print(sqlite3.connect("/sandbox/.hermes/state.db").execute("select count(*) from
 PY' 60 | tail -1
 }
 
-mapfile -t BOTS_FOUND < <(bot_list)
+BOTS_FOUND=(); while IFS= read -r line; do [[ -n "$line" ]] && BOTS_FOUND+=("$line"); done < <(bot_list)
 N=${#BOTS_FOUND[@]}
 printf '  bots: %s\n' "${BOTS_FOUND[*]:-none}"
 (( N >= 1 )) || { echo "no bots; run ./swarm up"; exit 1; }
@@ -99,8 +102,8 @@ done
 section "5  api_server on the bridge"
 for b in "${BOTS_FOUND[@]}"; do
   port=$(bot_port "$b"); key=$(read_secret "$(bot_key_file "$b")")
-  check "$b :$port /v1/models with key" "$(http_code "http://$BRIDGE_IP:$port/v1/models" -H "Authorization: Bearer $key")" 200
-  check "$b :$port rejects a wrong key" "$(http_code "http://$BRIDGE_IP:$port/v1/models" -H "Authorization: Bearer wrong-$RANDOM")" 401
+  check "$b :$port /v1/models with key" "$(http_code "http://$HOST_API_ADDR:$port/v1/models" -H "Authorization: Bearer $key")" 200
+  check "$b :$port rejects a wrong key" "$(http_code "http://$HOST_API_ADDR:$port/v1/models" -H "Authorization: Bearer wrong")" 401
   check "$b exactly one bridge forward" "$(pgrep -fc "forward service --target-port $port ")" 1
 done
 

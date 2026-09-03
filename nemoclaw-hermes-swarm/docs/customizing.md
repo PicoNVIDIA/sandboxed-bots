@@ -146,9 +146,14 @@ you switch: the model has to be good at tool calls (a bot is nothing but tool
 calls), and `INFERENCE_CONTEXT_LENGTH` can't exceed what the server actually
 serves or the first long turn gets a 400.
 
-Want one bot on a different model? Edit `/sandbox/.hermes/config.yaml` inside
-its sandbox and `./swarm up` to restart it. There's deliberately no per-bot model
-knob in `swarm.env`. A fleet on one model is a fleet you can reason about.
+To switch models or endpoints, edit `swarm.env` and run `./swarm up`. It
+rewrites the model config in every sandbox and restarts the gateways; the
+sandboxes, souls, and peers stay. One thing to watch: if the new endpoint is a
+different host, the egress policy still only allows the old one. Rebuild those
+bots (`./swarm rm`, `./swarm add`) so the policy is rendered for the new URL.
+
+There's deliberately no per-bot model knob. A fleet on one model is a fleet you
+can reason about, and `./swarm up` would overwrite a hand edit anyway.
 
 ## More bots
 

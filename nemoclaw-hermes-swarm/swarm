@@ -36,7 +36,7 @@ _real_home=$(getent passwd "$(id -un)" 2>/dev/null | cut -d: -f6 || true)   # Li
 [[ -n "$_real_home" ]] || _real_home=$(dscl . -read "/Users/$(id -un)" NFSHomeDirectory 2>/dev/null | awk '{print $2}')   # macOS
 [[ -d "${_real_home:-}" ]] && export HOME="$_real_home"
 unset HERMES_HOME HERMES_PROFILE
-export PATH="$HOME/.local/bin:$PATH"
+export PATH="/opt/homebrew/bin:$HOME/.local/bin:$PATH"
 
 usage() { sed -n '5,18p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; }
 
@@ -59,6 +59,15 @@ for v in INFERENCE_BASE_URL INFERENCE_MODEL INFERENCE_KEY_FILE HERMES_REF BOTS \
   [[ -n "${!v:-}" ]] || { printf 'swarm: %s is empty in %s\n' "$v" "$ENV_FILE" >&2; exit 2; }
 done
 : "${INFERENCE_CONTEXT_LENGTH:=131072}" "${INFERENCE_MAX_TOKENS:=8192}"
+# Where api_servers are published for the HOST side (Desktop, host profiles,
+# tests). On Linux the OpenShell bridge is a host interface, so bind there and
+# nothing on the LAN can reach it. On macOS the bridge lives inside the Colima
+# or Docker Desktop VM and is not reachable from the Mac, so publish on
+# loopback instead. Sandboxes always reach each other via the bridge.
+if [[ -z "${HOST_API_ADDR:-}" ]]; then
+  if [[ "$(uname -s)" == Darwin ]]; then HOST_API_ADDR=127.0.0.1; else HOST_API_ADDR="$BRIDGE_IP"; fi
+fi
+export HOST_API_ADDR
 : "${SANDBOX_PREFIX:=}" "${SANDBOX_MEMORY:=8Gi}" "${SANDBOX_CPU:=4}" "${TRACING:=on}" "${OTLP_PORT:=4319}"
 : "${LANGSMITH_PROJECT:=hermes-swarm}" "${LANGSMITH_ENDPOINT:=https://api.smith.langchain.com/otel}"
 INFERENCE_KEY_FILE="${INFERENCE_KEY_FILE/#\~/$HOME}"

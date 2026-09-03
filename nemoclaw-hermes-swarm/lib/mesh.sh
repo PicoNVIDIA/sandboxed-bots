@@ -24,7 +24,7 @@ _mesh_install_plugin() {
   sbx "$sb" 'test -f /sandbox/.hermes/plugins/teammates/plugin.yaml && echo HAVE' 60 | grep -q HAVE && return 0
   tgz=$(mktemp /tmp/teammates.XXXXXX.tgz)
   tar czf "$tgz" -C "$SWARM_ROOT/plugins" --exclude=__pycache__ teammates
-  b64=$(base64 -w0 < "$tgz"); rm -f "$tgz"
+  b64=$(b64 "$tgz"); rm -f "$tgz"
   sbx "$sb" "mkdir -p /sandbox/.hermes/plugins && printf '%s' '$b64' | base64 -d | tar xzf - -C /sandbox/.hermes/plugins
 \$H -m hermes_cli.main plugins enable teammates >/dev/null 2>&1 || true
 test -f /sandbox/.hermes/plugins/teammates/plugin.yaml && echo PLUGIN-OK" 180 | grep -q PLUGIN-OK \
@@ -44,8 +44,8 @@ _mesh_link() {
 # Bring every pair up to date. Idempotent; peer add updates in place, and
 # policy-add of an existing group is a no-op.
 mesh_sync() {
-  local bots a b n
-  mapfile -t bots < <(bot_list)
+  local a b n line
+  local bots=(); while IFS= read -r line; do [[ -n "$line" ]] && bots+=("$line"); done < <(bot_list)
   n=${#bots[@]}
   (( n < 2 )) && { dim "mesh: fewer than two bots"; return 0; }
   for a in "${bots[@]}"; do

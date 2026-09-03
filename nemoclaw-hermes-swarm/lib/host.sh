@@ -20,20 +20,20 @@ host_profile_ensure() {
   hermes profile list 2>/dev/null | strip_ansi | awk '{print $1}' | grep -qx "$name" \
     || hermes profile create "$name" >/dev/null 2>&1 || true
   local prov
-  prov=$(jq -cn --arg url "http://$BRIDGE_IP:$port/v1" \
+  prov=$(jq -cn --arg url "http://$HOST_API_ADDR:$port/v1" \
     '{name:"sandbox", base_url:$url, key_env:"SANDBOX_API_KEY", models:["hermes-agent"], default_model:"hermes-agent"}')
   hermes -p "$name" config set providers.sandbox "$prov" >/dev/null 2>&1
   hermes -p "$name" config set model.provider sandbox >/dev/null 2>&1
   hermes -p "$name" config set model.default hermes-agent >/dev/null 2>&1
-  hermes -p "$name" config set model.base_url "http://$BRIDGE_IP:$port/v1" >/dev/null 2>&1
+  hermes -p "$name" config set model.base_url "http://$HOST_API_ADDR:$port/v1" >/dev/null 2>&1
   hermes -p "$name" config set model.max_tokens "$INFERENCE_MAX_TOKENS" >/dev/null 2>&1
   hermes -p "$name" config set model.context_length "$INFERENCE_CONTEXT_LENGTH" >/dev/null 2>&1
   local envf="$HOME/.hermes/profiles/$name/.env"
   touch "$envf"; chmod 600 "$envf"
-  sed -i '/^SANDBOX_API_KEY=/d' "$envf"
+  sed_delete '^SANDBOX_API_KEY=' "$envf"
   printf 'SANDBOX_API_KEY=%s\n' "$key" >> "$envf"
   [[ -n "$soul" && -f "$soul" ]] && cp "$soul" "$HOME/.hermes/profiles/$name/SOUL.md"
-  ok "host profile $name -> $BRIDGE_IP:$port"
+  ok "host profile $name -> $HOST_API_ADDR:$port"
 
   if [[ "$HOST_GATEWAY" == on ]]; then
     host_gateway_start "$name"
@@ -79,14 +79,23 @@ host_profile_remove() {
 }
 
 host_desktop_hint() {
-  # The address the Desktop should SSH to: the one this host uses for default
-  # routing. `hostname -I` lists link-local and bridge addresses first.
+  if is_macos; then
+    cat <<EOF
+
+  Hermes Desktop (this Mac)
+    Quit and reopen the app. The bots above appear in the Bots roster under
+    Local. Seat them in a group chat and @mention them.
+EOF
+    return
+  fi
+  # Remote host: the address the Desktop should SSH to, from the default route.
   local ip; ip=$(ip -4 route get 1.1.1.1 2>/dev/null | awk '/src/ {for (i=1;i<=NF;i++) if ($i=="src") print $(i+1)}' | head -1)
+  [[ -n "$ip" ]] || ip=$(host_reach_addr)
   cat <<EOF
 
   Hermes Desktop
     Settings -> Connections -> Add connection -> SSH: $(whoami)@${ip:-<this host>}
-    Then restart the app; every bot above appears in the Bots roster. Seat them in
-    a group chat and @mention them. If the room looks dead, restart the app first.
+    Then quit and reopen the app; every bot above appears in the Bots roster.
+    Seat them in a group chat and @mention them.
 EOF
 }

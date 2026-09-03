@@ -24,7 +24,7 @@ bot_port() {
 _next_port() {
   local p="$API_PORT_BASE" used
   used=$(cat "$SWARM_STATE"/keys/*.port 2>/dev/null | tr '\n' ' ')
-  while [[ " $used " == *" $p "* ]] || ss -lnt 2>/dev/null | grep -q ":$p "; do p=$((p + 1)); done
+  while [[ " $used " == *" $p "* ]] || port_in_use "$p"; do p=$((p + 1)); done
   printf '%s' "$p"
 }
 
@@ -70,7 +70,16 @@ bot_policy_extras() {
 
 # Write model/provider, api_server, SOUL, and the inference key into the sandbox.
 bot_configure() {
-  local name="$1" port="$2" key="$3" soul="$4" sb ikey
+  local name="$1" port="$2" key="$3" soul="$4"
+  bot_configure_model "$name" "$port" "$key"
+  bot_write_soul "$name" "$soul"
+  ok "model $INFERENCE_MODEL, api_server :$port, SOUL written"
+}
+
+# Model, endpoint, key, and api_server only. Safe to re-run: `swarm up` calls
+# this on restore so editing swarm.env and re-running picks up a new model.
+bot_configure_model() {
+  local name="$1" port="$2" key="$3" sb ikey
   sb=$(sandbox_of "$name")
   ikey=$(read_secret "$INFERENCE_KEY_FILE")
 
@@ -95,12 +104,14 @@ touch /sandbox/.hermes/.env; chmod 600 /sandbox/.hermes/.env
 sed -i '/^API_SERVER_KEY=/d; /^INFERENCE_API_KEY=/d' /sandbox/.hermes/.env
 printf 'API_SERVER_KEY=%s\nINFERENCE_API_KEY=%s\n' '$key' '$ikey' >> /sandbox/.hermes/.env
 echo CONFIGURED" 300 | tail -1 | grep -q CONFIGURED || die "configuring $sb failed"
+}
 
-  local body
+bot_write_soul() {
+  local name="$1" soul="$2" sb body
+  sb=$(sandbox_of "$name")
   body=$(cat "$soul"; printf '\n\n%s\n' "$(_soul_runtime_section "$name")")
   printf '%s' "$body" > "$SWARM_STATE/relay/$name.soul.md"
   sandbox_put "$sb" "$SWARM_STATE/relay/$name.soul.md" /sandbox/.hermes/SOUL.md
-  ok "model $INFERENCE_MODEL, api_server :$port, SOUL written"
 }
 
 _soul_runtime_section() {
@@ -132,15 +143,15 @@ bot_start() {
     'export HOME=/sandbox HERMES_HOME=/sandbox/.hermes; exec /sandbox/.hermes/hermes-agent/venv/bin/python -m hermes_cli.main gateway run'
   # Forward: kill by exact port first so duplicates never accumulate.
   pkill_pattern "forward service --target-port $port "
-  daemonize "$(bot_log "$name" forward)" openshell forward service --target-port "$port" --local "$BRIDGE_IP:$port" "$sb"
+  daemonize "$(bot_log "$name" forward)" openshell forward service --target-port "$port" --local "$HOST_API_ADDR:$port" "$sb"
   ok "gateway and bridge forward started"
 }
 
 bot_wait_api() {
   local name="$1" port="$2" key="$3" i code
   for ((i = 0; i < 24; i++)); do
-    code=$(http_code "http://$BRIDGE_IP:$port/v1/models" -H "Authorization: Bearer $key")
-    [[ "$code" == 200 ]] && { ok "api_server 200 on $BRIDGE_IP:$port"; return 0; }
+    code=$(http_code "http://$HOST_API_ADDR:$port/v1/models" -H "Authorization: Bearer $key")
+    [[ "$code" == 200 ]] && { ok "api_server 200 on $HOST_API_ADDR:$port"; return 0; }
     sleep 5
   done
   warn "api_server on :$port returned $code after 2 min; gateway log: $(bot_log "$name" gateway)"
@@ -153,6 +164,8 @@ bot_restore() {
   port=$(bot_port "$name") || die "no stored port for $name in $SWARM_STATE/keys"
   key=$(read_secret "$(bot_key_file "$name")")
   [[ "$(sandbox_phase "$(sandbox_of "$name")")" == Ready ]] || die "sandbox $(sandbox_of "$name") is not Ready"
+  bot_configure_model "$name" "$port" "$key"
+  dim "model $INFERENCE_MODEL via $INFERENCE_BASE_URL"
   bot_start "$name" "$port"
   host_profile_ensure "$name" "$port" "$key" ""
   # Re-apply tracing every time: policy-add and the env write are idempotent,
