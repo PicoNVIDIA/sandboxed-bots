@@ -72,6 +72,10 @@ line. Three failed attempts with the same tool means the path is closed.
 
 ## The policy
 
+<p align="center">
+  <img src="img/06-two-policies.svg" alt="Researcher and reviewer policies side by side" width="100%">
+</p>
+
 Every bot starts from `policies/bot.template.yaml`: a read-only system, a
 writable `/sandbox`, and exactly one network destination, your model endpoint.
 Everything else is denied. `swarm` then adds presets:

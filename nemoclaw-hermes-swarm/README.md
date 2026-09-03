@@ -56,9 +56,17 @@ bot out of your home directory.
 
 So each bot here runs in a NemoClaw sandbox, and the boundary is real: its own
 PID, network, and mount namespaces, a filesystem it owns, egress denied unless a
-policy says otherwise. The researcher can reach the model, the collector, and
-GitHub. The reviewer can reach the model and the collector. Neither can reach
-your laptop, the host's loopback, or the other's files.
+policy says otherwise. Here are the two default bots, read live from OpenShell:
+
+<p align="center">
+  <img src="docs/img/06-two-policies.svg" alt="The researcher and reviewer sandboxes and what each can reach" width="100%">
+</p>
+
+The researcher can reach the model, the collector, its teammate, and a short
+list of documentation sites. The reviewer can reach the model, the collector,
+and its teammate. That difference is one file, `policies/nemoclaw-researcher.yaml`,
+and the reviewer not having one. Neither bot can reach your laptop, the host's
+loopback, or the other's files.
 
 I don't want you to take that on faith. `./swarm test` runs 50 live checks,
 including reading `/proc/self/ns/pid` from inside each sandbox to prove the
