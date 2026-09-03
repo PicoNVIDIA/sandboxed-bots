@@ -53,6 +53,7 @@ bot_create() {
 
   bot_configure "$name" "$port" "$key" "$soul"
   bot_policy_extras "$name"
+  bot_install_extras "$name"
   bot_start "$name" "$port"
   host_profile_ensure "$name" "$port" "$key" "$soul"
   [[ "$TRACING" == "on" ]] && tracing_enable_bot "$name"
@@ -62,10 +63,11 @@ bot_create() {
 # Role-specific reach: policies/<bot>.yaml is an additive preset applied when
 # present. This is how the researcher gets GitHub and the reviewer does not.
 bot_policy_extras() {
-  local name="$1" f="$SWARM_ROOT/policies/$name.yaml"
-  [[ -f "$f" ]] || return 0
+  local name="$1" f
+  f=$(bot_policy_file "$name")
+  [[ -n "$f" ]] || return 0
   policy_add "$(sandbox_of "$name")" "$f"
-  ok "extra policy applied: policies/$name.yaml"
+  ok "extra policy applied: ${f#$SWARM_ROOT/}"
 }
 
 # Write model/provider, api_server, SOUL, and the inference key into the sandbox.
@@ -184,7 +186,11 @@ bot_restore() {
   key=$(read_secret "$(bot_key_file "$name")")
   [[ "$(sandbox_phase "$(sandbox_of "$name")")" == Ready ]] || die "sandbox $(sandbox_of "$name") is not Ready"
   bot_configure_model "$name" "$port" "$key"
-  dim "model $INFERENCE_MODEL via $INFERENCE_BASE_URL"
+  dim "model $(bot_model "$name") via $INFERENCE_BASE_URL"
+  # Re-write the soul and per-bot extras too: editing a soul or swarm.env's
+  # VSS_* lines and re-running `swarm up` is how those changes land.
+  bot_write_soul "$name" "$(bot_soul_file "$name")" 2>/dev/null || true
+  bot_env_extras "$name"
   bot_start "$name" "$port"
   host_profile_ensure "$name" "$port" "$key" ""
   # Re-apply tracing every time: policy-add and the env write are idempotent,

@@ -243,6 +243,25 @@ else. It added a bot and reported `16 ok, 0 failed`. It also found a bug on the
 first try (Hermes rewrites `HOME` for its terminal tool), which is now fixed and
 in the skill.
 
+## Going multimodal
+
+The defaults are text-only on purpose. When a colleague asked whether the demo
+could do more than text, we added two bots under [`examples/`](examples/) and
+left them optional: `nemoclaw-vision`, whose model accepts images, and
+`nemoclaw-vss`, which watches video through NVIDIA RT-VLM from the
+[Video Search and Summarization blueprint](https://github.com/NVIDIA-AI-Blueprints/video-search-and-summarization).
+
+They are worth a look even if you never run them, because they show the
+policy story with something you can see. Only the vision bot's model gets
+pixels. Only the vss bot's egress reaches the video model. When the reviewer is
+handed a photo it cannot read, it asks the vision bot in plain language and
+relays the answer. No image data crosses a sandbox boundary; only questions
+and answers do.
+
+Two lines in `swarm.env` and `swarm add` for the first; one container on a
+GPU plus the same for the second. [examples/README.md](examples/README.md)
+has both.
+
 ## What's here
 
 ```
@@ -253,6 +272,7 @@ image/Dockerfile           sandbox image, Hermes pinned at a tag
 policies/                  egress template + per-bot presets
 souls/                     roles: researcher, reviewer, critic, qa
 plugins/teammates/         message_teammate / list_teammates
+examples/                  optional: a vision bot, a VSS video bot, RT-VLM compose
 observability/             Relay config + collector config
 tests/                     e2e.sh (50 live checks), presubmit.sh
 skill/                     hand this to your own agent
@@ -265,7 +285,8 @@ SECURITY.md                what's protected, what isn't, what you hold
 Does: one sandbox per bot, deny-by-default egress, Hermes 0.21 baked into the
 image, bot-to-bot handoffs through the boundary, Relay traces from every bot to
 one collector, Desktop group chat local or over SSH, restore after reboot, a
-live test suite, macOS and Linux hosts.
+live test suite, macOS and Linux hosts, per-bot models, and (as examples) a
+bot that sees images and a bot that watches video.
 
 Does not: serve a model, span more than one host, expose bots to anything but
 your Desktop and each other, or join a multi-bot handoff into one trace tree

@@ -22,7 +22,7 @@ if [[ -z "${HOST_API_ADDR:-}" ]]; then
   if [[ "$(uname -s)" == Darwin ]]; then HOST_API_ADDR=127.0.0.1; else HOST_API_ADDR="$BRIDGE_IP"; fi
 fi
 export INFERENCE_KEY_FILE LANGSMITH_KEY_FILE SWARM_STATE HOST_API_ADDR
-for m in common preflight image policy sandbox bot host mesh tracing verify; do
+for m in common preflight image policy sandbox bot extras host mesh tracing verify; do
   # shellcheck disable=SC1090
   source "$SWARM_ROOT/lib/$m.sh"
 done
@@ -179,6 +179,51 @@ for b in "${BOTS_FOUND[@]}"; do
   check "$b host profile exists" "$([[ -f "$HOME/.hermes/profiles/$b/config.yaml" ]] && echo yes || echo no)" yes
   [[ "${HOST_GATEWAY:-on}" == on ]] && check "$b host profile running" "$(host_profile_state "$b")" running
 done
+
+section "11 multimodal examples (only when those bots exist)"
+if bot_exists nemoclaw-vision 2>/dev/null; then
+  sb=$(sandbox_of nemoclaw-vision)
+  check "nemoclaw-vision declares vision in the sandbox" "$(sbx "$sb" 'grep -c "supports_vision: true" /sandbox/.hermes/config.yaml' 30 | tail -1)" 1
+  check "nemoclaw-vision shim declares vision" "$(hermes -p nemoclaw-vision config get model.supports_vision 2>/dev/null | tail -1)" true
+  # A 64x64 white PNG with a red square, no PIL needed.
+  img=$(mktemp /tmp/e2e-img.XXXXXX.png)
+  python3 - "$img" <<'PY'
+import struct, sys, zlib
+W=H=64; rows=[]
+for y in range(H):
+    row=bytearray([0])
+    for x in range(W): row += bytes([255,0,0]) if (16<=x<48 and 16<=y<48) else bytes([255,255,255])
+    rows.append(bytes(row))
+def chunk(t,d): return struct.pack(">I",len(d))+t+d+struct.pack(">I",zlib.crc32(t+d)&0xffffffff)
+open(sys.argv[1],"wb").write(b"\x89PNG\r\n\x1a\n"+chunk(b"IHDR",struct.pack(">IIBBBBB",W,H,8,2,0,0,0))+chunk(b"IDAT",zlib.compress(b"".join(rows),9))+chunk(b"IEND",b""))
+PY
+  out=$(timeout 240 hermes -p nemoclaw-vision chat --image "$img" -q "One sentence: what shape and colour is in this image? No tools." 2>/dev/null | strip_ansi | tr 'A-Z' 'a-z')
+  rm -f "$img"
+  check "nemoclaw-vision saw the image (red square)" "$(grep -q "red" <<<"$out" && grep -qE "square|rectangle" <<<"$out" && echo yes || echo no)" yes
+  check "nemoclaw-vision did not say it cannot see" "$(grep -q "cannot see\|can't see\|unable to see" <<<"$out" && echo blind || echo no)" no
+else
+  dim "nemoclaw-vision not present; skipped"
+fi
+if bot_exists nemoclaw-vss 2>/dev/null; then
+  sb=$(sandbox_of nemoclaw-vss)
+  check "nemoclaw-vss has the vss plugin" "$(sbx "$sb" 'test -f /sandbox/.hermes/plugins/vss/plugin.yaml && echo yes || echo no' 30 | tail -1)" yes
+  check "nemoclaw-vss has the vss-video skill" "$(sbx "$sb" 'test -f /sandbox/.hermes/skills/vss-video/SKILL.md && echo yes || echo no' 30 | tail -1)" yes
+  check "nemoclaw-vss has clips" "$(sbx "$sb" 'ls /sandbox/videos/*.mp4 2>/dev/null | wc -l | tr -d " "' 30 | tail -1 | awk '{print ($1>0)?"yes":"no"}')" yes
+  if [[ -n "${VSS_BASE_URL:-}" ]]; then
+    check "nemoclaw-vss policy names RT-VLM" "$(policy_endpoints "$sb" | grep -c "vss-rtvlm")" 1
+    other="${BOTS_FOUND[0]}"; [[ "$other" == nemoclaw-vss ]] && other="${BOTS_FOUND[1]}"
+    check "$other policy does NOT name RT-VLM" "$(policy_endpoints "$(sandbox_of "$other")" | grep -c "vss-rtvlm")" 0
+    vhost="${VSS_BASE_URL#*://}"; vhost="${vhost%%/*}"
+    check "$other cannot reach RT-VLM (403)" "$(sbx "$(sandbox_of "$other")" "curl -s -o /dev/null -w '%{http_code}' --max-time 8 http://$vhost/v1/models" 30 | tail -1)" 403
+    check "nemoclaw-vss can reach RT-VLM (200)" "$(sbx "$sb" "curl -s -o /dev/null -w '%{http_code}' --max-time 8 http://$vhost/v1/models" 30 | tail -1)" 200
+    out=$(timeout 400 hermes -p nemoclaw-vss chat -q "Use vss_describe_video on forklift-training.mp4 and reply with the first two timestamped lines only." 2>/dev/null | strip_ansi)
+    check "nemoclaw-vss described the clip with timestamps" "$(grep -qE '\[[0-9]{2}:[0-9]{2}-[0-9]{2}:[0-9]{2}\]' <<<"$out" && echo yes || echo no)" yes
+  else
+    dim "VSS_BASE_URL not set; RT-VLM checks skipped"
+  fi
+else
+  dim "nemoclaw-vss not present; skipped"
+fi
 
 printf '\n  ==============================================\n  SUMMARY: %d passed, %d failed\n  ==============================================\n' "$PASS" "$FAIL"
 (( FAIL == 0 ))

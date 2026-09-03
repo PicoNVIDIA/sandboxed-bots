@@ -76,7 +76,7 @@ SWARM_STATE="${SWARM_STATE/#\~/$HOME}"
 export INFERENCE_KEY_FILE LANGSMITH_KEY_FILE SWARM_STATE
 
 # ── modules ──────────────────────────────────────────────────────────────────
-for m in common preflight image policy sandbox bot host mesh tracing verify; do
+for m in common preflight image policy sandbox bot extras host mesh tracing verify; do
   # shellcheck disable=SC1090
   source "$SWARM_ROOT/lib/$m.sh"
 done
@@ -99,7 +99,7 @@ cmd_up() {
       bot_restore "$b"
     else
       log "bot $b: creating"
-      bot_create "$b" "$SWARM_ROOT/souls/$b.md"
+      bot_create "$b" "$(bot_soul_file "$b")"
     fi
   done
   log "mesh"
@@ -122,8 +122,7 @@ cmd_add() {
   done
   bot_exists "$name" && die "bot $name already exists (swarm rm $name first, or swarm up to restore it)"
   if [[ -z "$soul" && -z "$role" ]]; then
-    soul="$SWARM_ROOT/souls/$name.md"
-    [[ -f "$soul" ]] || die "no souls/$name.md; pass --soul FILE or --role \"text\""
+    soul=$(bot_soul_file "$name")
   fi
   if [[ -n "$role" ]]; then
     soul="$SWARM_STATE/souls/$name.md"; mkdir -p "$(dirname "$soul")"

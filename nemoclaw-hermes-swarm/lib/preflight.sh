@@ -55,9 +55,14 @@ preflight_run() {
     code=$(http_code "$INFERENCE_BASE_URL/models" -H "Authorization: Bearer $(tr -d '\r\n' < "$INFERENCE_KEY_FILE")")
     if [[ "$code" == 200 ]]; then pf_ok "inference endpoint auth ($INFERENCE_BASE_URL) 200"
     else pf_fail "inference endpoint returned $code (401 = bad key, 000 = unreachable from this host)"; fi
-    if printf '%s' "$models" | jq -e --arg m "$INFERENCE_MODEL" '.data[]? | select(.id==$m)' >/dev/null 2>&1; then
-      pf_ok "model $INFERENCE_MODEL listed by endpoint"
-    else pf_fail "model $INFERENCE_MODEL not in $INFERENCE_BASE_URL/models"; fi
+    # Every distinct model any bot uses (INFERENCE_MODEL plus per-bot overrides).
+    local m seen=" "
+    for m in "$INFERENCE_MODEL" $(compgen -v | grep '^INFERENCE_MODEL_' | while read -r v; do printf '%s\n' "${!v}"; done); do
+      [[ "$seen" == *" $m "* ]] && continue; seen+="$m "
+      if printf '%s' "$models" | jq -e --arg m "$m" '.data[]? | select(.id==$m)' >/dev/null 2>&1; then
+        pf_ok "model $m listed by endpoint"
+      else pf_fail "model $m not in $INFERENCE_BASE_URL/models"; fi
+    done
   else
     pf_fail "inference key file missing: $INFERENCE_KEY_FILE (umask 077; echo TOKEN > it)"
   fi
@@ -66,6 +71,14 @@ preflight_run() {
   free_gb=$(df -Pk / | awk 'NR==2 {printf "%d", $4/1048576}')
   if [[ "${free_gb:-0}" -ge 20 ]]; then pf_ok "disk ${free_gb}G free"
   else pf_fail "only ${free_gb:-?}G free on /; need 20G for the image"; fi
+
+  if [[ -n "${VSS_BASE_URL:-}" ]]; then
+    # As the host sees it: host.openshell.internal is the bridge address.
+    local vurl="${VSS_BASE_URL/host.openshell.internal/$BRIDGE_IP}" vcode
+    vcode=$(http_code "$vurl/v1/health/ready")
+    if [[ "$vcode" == 200 ]]; then pf_ok "RT-VLM ready at $vurl"
+    else pf_fail "RT-VLM at $vurl returned $vcode (000 = not running; see examples/README.md)"; fi
+  fi
 
   if [[ "$TRACING" == "on" ]]; then
     if [[ -n "$LANGSMITH_KEY_FILE" && -f "$LANGSMITH_KEY_FILE" ]]; then pf_ok "tracing on; LangSmith export enabled (key file present)"
