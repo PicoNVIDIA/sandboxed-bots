@@ -73,28 +73,47 @@ bot_configure() {
   local name="$1" port="$2" key="$3" soul="$4"
   bot_configure_model "$name" "$port" "$key"
   bot_write_soul "$name" "$soul"
-  ok "model $INFERENCE_MODEL, api_server :$port, SOUL written"
+  ok "model $(bot_model "$name"), api_server :$port, SOUL written"
 }
 
 # Model, endpoint, key, and api_server only. Safe to re-run: `swarm up` calls
 # this on restore so editing swarm.env and re-running picks up a new model.
+# bot_model NAME: the model this bot runs. INFERENCE_MODEL_<NAME> in swarm.env
+# overrides INFERENCE_MODEL for one bot (name upper-cased, dashes to
+# underscores, the same rule peer keys use). Same endpoint, same key.
+bot_model() {
+  local var="INFERENCE_MODEL_$(printf '%s' "$1" | tr 'a-z-' 'A-Z_')"
+  printf '%s' "${!var:-$INFERENCE_MODEL}"
+}
+
+# bot_vision NAME: "true" if INFERENCE_VISION_<NAME>=on (or INFERENCE_VISION=on
+# for every bot), else "false". Hermes strips image parts for any model it
+# cannot look up on models.dev, which is every model behind a custom endpoint,
+# so a vision-capable model must be declared or the bot never sees a pixel.
+bot_vision() {
+  local var="INFERENCE_VISION_$(printf '%s' "$1" | tr 'a-z-' 'A-Z_')"
+  case "${!var:-${INFERENCE_VISION:-off}}" in on|true|yes|1) printf 'true' ;; *) printf 'false' ;; esac
+}
+
 bot_configure_model() {
-  local name="$1" port="$2" key="$3" sb ikey
+  local name="$1" port="$2" key="$3" sb ikey model
   sb=$(sandbox_of "$name")
   ikey=$(read_secret "$INFERENCE_KEY_FILE")
+  model=$(bot_model "$name")
 
   # A named provider block with key_env is the shape Hermes 0.21 resolves
   # reliably; `provider: custom` + OPENAI_API_KEY was rejected by the same
   # endpoint during testing.
   local prov
-  prov=$(jq -cn --arg url "$INFERENCE_BASE_URL" --arg m "$INFERENCE_MODEL" \
+  prov=$(jq -cn --arg url "$INFERENCE_BASE_URL" --arg m "$model" \
     '{name:"inference", base_url:$url, key_env:"INFERENCE_API_KEY", models:[$m], default_model:$m}')
 
   sbx "$sb" "
 set -e
 \$H -m hermes_cli.main config set providers.inference '$prov' >/dev/null
 \$H -m hermes_cli.main config set model.provider inference >/dev/null
-\$H -m hermes_cli.main config set model.default '$INFERENCE_MODEL' >/dev/null
+\$H -m hermes_cli.main config set model.default '$model' >/dev/null
+\$H -m hermes_cli.main config set model.supports_vision $(bot_vision "$name") >/dev/null
 \$H -m hermes_cli.main config set model.base_url '$INFERENCE_BASE_URL' >/dev/null
 \$H -m hermes_cli.main config set model.max_tokens $INFERENCE_MAX_TOKENS >/dev/null
 \$H -m hermes_cli.main config set model.context_length $INFERENCE_CONTEXT_LENGTH >/dev/null
