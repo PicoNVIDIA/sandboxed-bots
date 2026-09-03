@@ -1,11 +1,13 @@
 # Troubleshooting
 
-By symptom. Every entry is a failure that happened while building this example.
+By symptom, in the order that finds the cause fastest. Every entry here is
+something that actually broke while we built this, with the real error text. I'd
+rather you read a slightly blunt list than rediscover any of it.
 
 ## Start here: is a bot really down?
 
-Most "bot X is down" reports are not bot problems. In this order; stop at the
-first failure.
+Most "bot X is down" reports turn out not to be about the bot. Go in this order
+and stop at the first thing that fails.
 
 **1. Is the Desktop app running?** On your laptop:
 
@@ -13,16 +15,17 @@ first failure.
 pgrep -f "Hermes.app/Contents/MacOS/Hermes" >/dev/null && echo RUNNING || echo DOWN
 ```
 
-DOWN means nothing on the host matters. Relaunch and stop here. Several bots
-erroring at once with no error text is nearly always the client having exited.
+If it says DOWN, nothing on the host matters yet. Relaunch it and stop here.
+Several bots erroring at once with no error text is almost always the client
+having quit on you.
 
 **2. Does the bot answer a direct turn?** On the host:
 
 ```bash
-hermes -p researcher chat -q "Reply with exactly OK"
+hermes -p nemoclaw-researcher chat -q "Reply with exactly OK"
 ```
 
-A reply means the bot is healthy and the fault is Desktop-side. Skip to step 5.
+A reply means the bot is fine and the fault is on the Desktop side. Skip to 5.
 
 **3. Is the model endpoint up?**
 
@@ -36,11 +39,11 @@ instead of a bare error. A bot whose endpoint is down is not a broken bot.
 **4. `./swarm status`.** Each rung is a real probe: sandbox Ready, api_server
 200, a chat turn through the sandbox, relay active, host profile running.
 
-**5. Restart the Desktop app.** Cheap and correct for any room-level symptom: an
-exited client, stale backends after a gateway restart, reverted routing. Every
-in-sandbox gateway restart invalidates the Desktop's backend, so after
-`./swarm up` on a rebooted host, restart the app too. Never restart gateways
-right before a demo.
+**5. Restart the Desktop app.** Cheap and usually right for anything room-level:
+a quit client, stale backends after a gateway restart, routing that reverted.
+Every in-sandbox gateway restart invalidates the Desktop's backend, so after
+`./swarm up` on a rebooted host, restart the app too. And don't restart gateways
+five minutes before a demo. I have done this. It goes badly.
 
 ## A bot receives nothing in a group chat
 
@@ -50,7 +53,7 @@ Every health check passes and it still says nothing.
 with something new; `(pass)` is a valid answer. Read what it actually said:
 
 ```bash
-openshell sandbox exec -n v2-researcher -- /sandbox/.hermes/hermes-agent/venv/bin/python - <<'PY'
+openshell sandbox exec -n nemoclaw-researcher -- /sandbox/.hermes/hermes-agent/venv/bin/python - <<'PY'
 import sqlite3
 c = sqlite3.connect("/sandbox/.hermes/state.db")
 for role, text in reversed(list(c.execute("select role, substr(content,1,200) from messages order by rowid desc limit 6"))):
@@ -191,18 +194,19 @@ the second does not exceed what your server serves.
 
 ## A bot claims it verified something it did not
 
-Observed: nine GitHub issues reported open by number, four were closed, zero tool
-calls that turn. Bots produce real-looking identifiers from training data when
-they cannot reach a source. Two mitigations: a hard rule in the soul (never state
-a fact a tool did not return this session), and tracing, where a turn asserting
-verification with no tool spans is obvious at a glance.
+We watched a bot report nine GitHub issues as open, by number. Four were closed.
+It had made zero tool calls that turn. Models produce real-looking identifiers
+from training data when they can't reach a source, and they do it with total
+confidence. Two things help: a hard rule in the soul (never state a fact a tool
+didn't return this session), and tracing, where a confident turn with no tool
+spans under it jumps out at you.
 
 ## A bot loops on a blocked tool and burns the whole turn
 
-Observed: HTML scrape fails, `terminal` tried three times, `Operation interrupted`
-after six minutes. One paragraph in the soul fixed it: report what you have, name
-the blocker, stop after three failures with the same tool. That turned the
-six-minute failure into a 57-second answer with ten sources.
+An HTML scrape failed, so the bot tried `terminal` three different ways and hit
+`Operation interrupted` six minutes later with nothing to show. One paragraph in
+the soul fixed it: report what you have, name the blocker, stop after three
+failures with the same tool. Same task afterwards: 57 seconds, ten sources.
 
 ## `swarm rm` printed nothing and removed nothing
 
@@ -229,6 +233,6 @@ running over SSH.
 - Never `docker rm` with a broad filter or `ancestor=`.
 - Never bind a probe to a port a working service owns. The victim exits on its
   next restart with no obvious connection to what you changed.
-- `swarm` only touches sandboxes with your `SANDBOX_PREFIX`, profiles named in
-  its state directory, and its own collector. Other people's sandboxes on the
+- `swarm` only touches sandboxes it has a key file for, profiles by those names,
+  and its own collector. Other people's sandboxes on the
   same host are invisible to it.

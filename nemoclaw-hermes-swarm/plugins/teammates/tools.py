@@ -52,7 +52,9 @@ def _peer_key(name: str) -> str | None:
     $HERMES_HOME/.env directly — plugin handlers do not always run with the
     profile's .env already exported.
     """
-    var = f"HERMES_PEER_{name.upper()}_KEY"
+    # Same derivation as hermes_cli/subcommands/peer.py: dashes become
+    # underscores. "nemoclaw-reviewer" -> HERMES_PEER_NEMOCLAW_REVIEWER_KEY.
+    var = f"HERMES_PEER_{name.upper().replace('-', '_')}_KEY"
     val = os.environ.get(var)
     if val:
         return val
@@ -119,7 +121,7 @@ def message_teammate(args: dict, **kwargs) -> str:
         return json.dumps(
             {
                 "error": f"No API key available for '{teammate}'. "
-                f"Expected env var HERMES_PEER_{teammate.upper()}_KEY."
+                f"Expected env var HERMES_PEER_{teammate.upper().replace('-', '_')}_KEY."
             }
         )
 

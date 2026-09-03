@@ -6,12 +6,14 @@
 # host profile is NAME.
 
 # ── inventory ────────────────────────────────────────────────────────────────
-# Bots are discovered, never hardcoded: a bot exists when its sandbox exists.
+# Bots are discovered from the key files this tool wrote, so the sandbox name
+# can equal the bot name (SANDBOX_PREFIX may be empty) and other people's
+# sandboxes on the same host are never touched.
 bot_list() {
-  openshell sandbox list 2>/dev/null | strip_ansi | awk 'NR>1{print $1}' \
-    | grep "^$SANDBOX_PREFIX" | sed "s/^$SANDBOX_PREFIX//" | sort
+  local f
+  for f in "$SWARM_STATE"/keys/*.key; do [[ -f "$f" ]] && basename "$f" .key; done | sort
 }
-bot_exists() { sandbox_exists "$(sandbox_of "$1")"; }
+bot_exists() { [[ -s "$(bot_key_file "$1")" ]] && sandbox_exists "$(sandbox_of "$1")"; }
 
 bot_port() {
   local f; f=$(bot_port_file "$1")
@@ -50,10 +52,20 @@ bot_create() {
   ok "hermes in sandbox: ${ver:-?}"
 
   bot_configure "$name" "$port" "$key" "$soul"
+  bot_policy_extras "$name"
   bot_start "$name" "$port"
   host_profile_ensure "$name" "$port" "$key" "$soul"
   [[ "$TRACING" == "on" ]] && tracing_enable_bot "$name"
   bot_wait_api "$name" "$port" "$key"
+}
+
+# Role-specific reach: policies/<bot>.yaml is an additive preset applied when
+# present. This is how the researcher gets GitHub and the reviewer does not.
+bot_policy_extras() {
+  local name="$1" f="$SWARM_ROOT/policies/$name.yaml"
+  [[ -f "$f" ]] || return 0
+  policy_add "$(sandbox_of "$name")" "$f"
+  ok "extra policy applied: policies/$name.yaml"
 }
 
 # Write model/provider, api_server, SOUL, and the inference key into the sandbox.
@@ -94,10 +106,12 @@ echo CONFIGURED" 300 | tail -1 | grep -q CONFIGURED || die "configuring $sb fail
 _soul_runtime_section() {
   cat <<EOF
 ## Runtime
-You run inside an NVIDIA OpenShell sandbox named $(sandbox_of "$1") with kernel
-isolation and deny-by-default egress. Only your inference endpoint and your
-teammates' api_servers are reachable. If a tool cannot reach something, say so
-plainly; do not guess around it.
+You are a NemoClaw bot: a Hermes agent running inside an NVIDIA OpenShell
+sandbox named $(sandbox_of "$1"), managed by NemoClaw, traced by NeMo Relay.
+The sandbox has its own kernel namespaces and deny-by-default egress; only
+what your policy lists is reachable. When asked who or what you are, say so in
+one sentence. If a tool cannot reach something, report the blocker plainly
+rather than guessing around it.
 
 ## Rules
 - Never invent a source, URL, number, or quote. Label inference as inference.

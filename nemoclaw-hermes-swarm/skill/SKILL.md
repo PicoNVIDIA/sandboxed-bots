@@ -52,13 +52,13 @@ connection, SSH) and restart the app. The roster is read at launch.
 ## One bot at a time
 
 ```bash
-./swarm add analyst --soul souls/researcher.md   # new bot, meshed to all others
-./swarm add analyst --soul ./my-role.md
-./swarm rm analyst --yes                          # sandbox, profile, key, peers
+./swarm add nemoclaw-analyst --soul souls/nemoclaw-researcher.md   # meshed to all others
+./swarm add nemoclaw-analyst --soul ./my-role.md
+./swarm rm nemoclaw-analyst --yes                 # sandbox, profile, key, peers
 ./swarm ls
 ./swarm status                                    # health ladder per bot
 ./swarm test                                      # 50-check e2e suite
-./swarm traces analyst                            # relay state + collector counters
+./swarm traces nemoclaw-analyst                   # relay state + collector counters
 ```
 
 `add` takes 3 to 4 minutes, so give the terminal tool a timeout of at least
@@ -92,8 +92,17 @@ Never let a bot claim a fact a tool did not return this session. Without a
 reachable source, models produce plausible issue numbers and versions from
 training data.
 
-`swarm add` appends a short Runtime section (sandbox name, endpoint, egress
-posture) and a Teammates section to whatever soul you give it.
+`swarm add` appends a short Runtime section (you are a NemoClaw bot in sandbox
+X, here is what you can reach) and a Teammates section to whatever soul you
+give it.
+
+Name bots `nemoclaw-<role>`. The name is the @handle in Desktop, the host
+profile, and the sandbox, so the roster reads as a fleet of NemoClaw bots.
+
+To give one bot more network reach than the others, add
+`policies/<bot>.yaml` (a preset; see `policies/nemoclaw-researcher.yaml`).
+`swarm add` applies it automatically when the file exists. Bots without a file
+get only the model endpoint, the collector, and their teammates.
 
 ## Diagnosing "a bot is down"
 
@@ -128,6 +137,9 @@ In this order. Stop at the first failure.
 - **`policy-add` says `Preset must declare preset.name`.** Files given to
   policy-add are presets: top-level `preset: {name, description}`, no
   `version:`. `policies/otlp-export.yaml` is the reference shape.
+- **`message_teammate` says "No API key available … HERMES_PEER_NEMOCLAW-X_KEY".**
+  An old copy of the teammates plugin; Hermes turns dashes into underscores in
+  that variable name and the plugin now does too. `swarm up` reinstalls it.
 - **Relay "not active" but spans arrive.** The activation line is logged at
   INFO to `/sandbox/.hermes/logs/agent.log` inside the sandbox, not
   `gateway.log` and not the stderr captured on the host. Trust the collector
@@ -156,7 +168,7 @@ In this order. Stop at the first failure.
   `ssh '… "… \"…\" …" …'`. Same for `python -c` through `sandbox exec`: two
   shells eat the quotes. Use a heredoc on stdin.
 - **`pkill -f <pattern>` over SSH can match your own session** and kill it.
-  Patterns that include the sandbox name (`sandbox exec -n v2-x`) match the
+  Patterns that include the sandbox name (`sandbox exec -n nemoclaw-x`) match the
   ssh command that contains them. Kill by PID or by a pattern the outer
   command cannot contain (`--timeout 0`).
 - **`docker ps` showing `Up` proves nothing.** Probe the port.

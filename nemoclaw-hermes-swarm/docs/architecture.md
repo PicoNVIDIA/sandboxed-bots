@@ -1,163 +1,131 @@
 # Architecture
 
-Five diagrams and a table. If you read one thing, read the two-gateway diagram;
-conflating those two gateways is the most common way this setup breaks.
+If you read one thing here, read [the two gateways](#the-two-gateways). Mixing
+them up is how this setup breaks most often, and the symptom (a bot that answers
+over HTTP but is invisible in Desktop) looks like anything but a gateway problem.
 
-## Components
+## One request
 
-```
-  YOUR LAPTOP                     │             THE HOST (Linux + Docker + OpenShell)
-                                  │
-  ┌─────────────────────┐   SSH   │   ┌────────────────────────────────────────────┐
-  │ Hermes Desktop      │─────────┼──▶│ host gateway per bot                       │
-  │  Bots roster        │         │   │   hermes -p researcher gateway run         │
-  │  group chat         │         │   │   hermes -p reviewer   gateway run         │
-  └─────────────────────┘         │   └───────────────┬────────────────────────────┘
-                                  │                   │ model.base_url
-                                  │                   ▼
-                                  │       OpenShell bridge  172.18.0.1
-                                  │       ┌──────────┬──────────┬────────┐
-                                  │       │  :8490   │  :8491   │ :4319  │
-                                  │       └────┬─────┴────┬─────┴───┬────┘
-                                  │            │          │         │
-                                  │   ┌────────▼───┐ ┌────▼──────┐ ▼
-                                  │   │v2-researcher│ │v2-reviewer│ swarm-otel
-                                  │   │            │ │           │ (OTel collector)
-                                  │   │ Hermes 0.21│ │ Hermes    │      │
-                                  │   │ api_server │ │ api_server│      ▼ optional
-                                  │   │ Relay ─────┼─┼─Relay ────┼──▶ LangSmith
-                                  │   └─────┬──────┘ └─────┬─────┘
-                                  │         └───────┬──────┘
-                                  │                 ▼
-                                  │   ┌────────────────────────────────────────────┐
-                                  │   │ inference endpoint (OpenAI-compatible)     │
-                                  │   │ hosted API, NIM, vLLM, SGLang: your choice │
-                                  │   └────────────────────────────────────────────┘
-```
+<p align="center"><img src="img/01-one-request.svg" alt="One request through Desktop, the host gateway, the sandbox, and Relay" width="100%"></p>
 
-Each sandbox is a separate container with its own PID, network, mount, and IPC
-namespaces. Bots cannot see each other's processes or files. `./swarm test`
-section 3 reads `/proc/self/ns/*` from inside each sandbox and from the host and
-checks all three differ.
+You type `@nemoclaw-researcher …` in a Desktop room. Desktop is connected to the
+host over SSH. On the host there's a thin Hermes profile for each bot whose only
+job is to point at the bot's sandbox. It posts your message to the sandbox's
+api_server across the OpenShell bridge. Inside the sandbox, the real Hermes
+runs the turn: reads its SOUL, calls the model, runs tools, maybe messages a
+teammate. Relay, in the same process, emits a span for each of those and ships
+them to a collector on the host. The reply comes back the way it went in.
 
-## Two gateways per bot
+Every tool the bot runs executes inside the sandbox under that sandbox's egress
+policy. `./swarm test` checks this the blunt way: it asks a bot to run
+`hostname` and fails if the answer is the host's name.
 
-Every bot runs two Hermes gateway processes. They do different jobs, and missing
-the second produces a bot that works over HTTP yet never appears in Desktop.
+## Inside a sandbox
+
+<p align="center"><img src="img/03-inside-a-sandbox.svg" alt="What a sandbox can see and reach" width="100%"></p>
+
+An OpenShell sandbox is a container with its own PID, network, mount, and IPC
+namespaces, a Landlock-restricted filesystem, and an egress proxy that denies
+everything not on the list. The list starts with one entry (your model endpoint)
+and grows only through additive presets that `swarm` applies:
+
+| Preset | Who gets it | Lets the bot reach |
+|---|---|---|
+| `otlp-export` | every bot when `TRACING=on` | the collector on the bridge |
+| `peer-<name>` | both sides of every pair | that teammate's api_server port |
+| `policies/<bot>.yaml` | only a bot with a file by that name | whatever you put there |
+
+The researcher ships with `policies/nemoclaw-researcher.yaml` (GitHub,
+docs.nvidia.com). The reviewer has no such file. Two bots on the same host with
+different reach is the whole idea.
+
+## The two gateways
+
+Every bot runs two Hermes gateway processes with different jobs.
 
 ```
-                 ┌──────────────────────────────────────────────┐
-                 │ HOST                                         │
-  Desktop ──────▶│  host gateway:  hermes -p researcher gateway run
-  Bots roster    │    makes `hermes profile list` say "running" │
-  lists THIS     │    the only thing the roster sees            │
-                 │    model.base_url = http://172.18.0.1:8490/v1│
-                 │                        │                     │
-                 │  bridge forward        │ openshell forward   │
-                 │  172.18.0.1:8490 ──────┼──▶ v2-researcher:8490
-                 └────────────────────────┼─────────────────────┘
-                                          │
-                 ┌────────────────────────▼─────────────────────┐
-                 │ SANDBOX v2-researcher                        │
-                 │  in-sandbox gateway:  hermes gateway run     │
-                 │    serves the api_server on :8490            │
-                 │    runs the agent loop and every tool call   │
-                 │    reads SOUL.md, bot_peers, relay config    │
-                 │    talks to the inference endpoint           │
-                 └──────────────────────────────────────────────┘
+                 ┌──────────────────────────────────────────────────────┐
+                 │ HOST                                                 │
+  Desktop ──────▶│  host gateway   hermes -p nemoclaw-researcher gateway run
+  Bots roster    │    makes `hermes profile list` say "running"         │
+  lists THIS     │    the only thing the roster sees                    │
+                 │    model.base_url = http://172.18.0.1:8477/v1        │
+                 │                            │                         │
+                 │  bridge forward            │ openshell forward       │
+                 │  172.18.0.1:8477 ──────────┼──▶ nemoclaw-researcher:8477
+                 └────────────────────────────┼─────────────────────────┘
+                                              │
+                 ┌────────────────────────────▼─────────────────────────┐
+                 │ SANDBOX nemoclaw-researcher                          │
+                 │  in-sandbox gateway   hermes gateway run             │
+                 │    serves the api_server on :8477                    │
+                 │    runs the agent loop and every tool call           │
+                 │    reads SOUL.md, bot_peers, relay config            │
+                 └──────────────────────────────────────────────────────┘
 ```
 
-The host profile is a thin client. Its `model.base_url` points at the sandbox's
-api_server, so a "model call" from the host profile is a full agent turn inside
-the sandbox. That is what makes `hermes -p researcher chat` and a Desktop
-`@researcher` execute tools in the sandbox rather than on the host.
+The host profile is a shim. Its `model.base_url` is the sandbox's api_server,
+so a "model call" from the host profile is a full agent turn inside the sandbox.
+That one trick is what makes `hermes -p nemoclaw-researcher chat` and a Desktop
+`@nemoclaw-researcher` both execute in the sandbox rather than on the host.
 
-| You see | Meaning |
+| You see | It means |
 |---|---|
-| api_server 200, `hermes -p X chat` works, X absent from roster | host gateway down; `./swarm up` restarts it |
-| `hermes profile list` says running, chat hangs | in-sandbox gateway down or model endpoint down; `./swarm status` |
-| both fine, Desktop room dead | Desktop backend stale; restart the app |
+| api_server 200, `hermes -p X chat` works, X missing from the roster | host gateway is down; `./swarm up` restarts it |
+| `hermes profile list` says running, chat hangs | in-sandbox gateway or model endpoint is down; `./swarm status` |
+| both fine, Desktop room dead | Desktop's backend is stale; restart the app |
 
-## A request, end to end
+## A handoff
 
-```
-Desktop ─@researcher─▶ host gateway ─POST /v1/chat/completions─▶ bridge :8490
-                                                                       │
-                       ┌───────────────────────────────────────────────▼──┐
-                       │ v2-researcher                                    │
-                       │  api_server ─▶ agent loop ─▶ tools (terminal,    │
-                       │                    │          web_search, ...)   │
-                       │                    ├─▶ inference endpoint        │
-                       │                    └─▶ Relay spans ─▶ :4319      │
-                       └──────────────────────────────────────────────────┘
-```
+<p align="center"><img src="img/04-handoff.svg" alt="A handoff between two sandboxed bots" width="100%"></p>
 
-Every tool the bot runs executes inside the sandbox under its egress policy.
-`./swarm test` section 7 asks a bot to run `hostname` and checks the answer is the
-sandbox's, not the host's.
+Three things let a message cross from one sandbox to another, and `./swarm add`
+sets up all three, both directions, for every pair:
 
-## Handoff between bots
+1. a peer entry inside the sender's sandbox (`hermes peer add nemoclaw-reviewer
+   --url http://host.openshell.internal:8478 --key …`), because the agent loop
+   runs in there and that's the config it reads
+2. an additive egress rule in the sender's policy for the receiver's port
+3. the `teammates` plugin, which turns "message the reviewer" into a real tool
+   call with the target checked against the peer list
 
-```
- v2-researcher                                   v2-reviewer
- ┌──────────────────────────┐                    ┌──────────────────────────┐
- │ agent decides to hand off│                    │                          │
- │ message_teammate(        │  POST :8491        │ api_server ─▶ agent turn │
- │   reviewer, "...")  ─────┼──── bridge ───────▶│   in reviewer's Bot Chat │
- │                          │  Bearer <reviewer  │   with reviewer's SOUL   │
- │ reply lands in the       │◀── key> ───────────┼── reply                  │
- │ researcher's turn        │                    │                          │
- └──────────────────────────┘                    └──────────────────────────┘
-```
-
-Three things make this pass the sandbox boundary, and `./swarm add` sets up all
-three in both directions for every pair:
-
-1. `hermes peer add reviewer --url http://host.openshell.internal:8491 --key …`
-   inside the researcher's sandbox (the agent loop runs there and reads that config)
-2. an additive egress rule in the researcher's policy allowing `:8491`
-3. the `teammates` plugin, which turns "message reviewer" into a real tool call
-   with the target validated against the peer list
-
-Hermes 0.21's built-in `message_agent` covers the same job for bots managed by
-Desktop; the plugin keeps handoffs working from the CLI and in rooms with no
-Desktop in the loop.
+Hermes 0.21 has a built-in `message_agent` that does the same job for bots
+Desktop manages. The plugin keeps handoffs working from the CLI and in rooms
+with no Desktop attached.
 
 ## Tracing
 
-```
- sandbox ─── Relay (in-process, gen_ai spans) ───▶ swarm-otel :4319 ──▶ debug log
-                                                        │
-                                                        └──▶ LangSmith (if key file present)
-```
+<p align="center"><img src="img/05-relay-trace.svg" alt="Relay spans from sandbox to collector" width="100%"></p>
 
-Relay is part of Hermes. `./swarm up` writes a `relay-plugins.toml` per bot,
-points Hermes at it through `HERMES_NEMO_RELAY_PLUGINS_TOML`, and allows egress
-to the collector. The collector keeps the LangSmith key on the host; sandboxes
-never hold it. See [tracing.md](tracing.md).
+Relay is part of Hermes; there's nothing to install. `./swarm up` writes one
+`relay-plugins.toml` per bot, points Hermes at it, allows egress to the
+collector, and restarts the gateway. The collector holds any downstream keys.
+Sandboxes never see them. [tracing.md](tracing.md) has the details and the two
+gotchas that cost us an afternoon.
 
 ## Network boundaries
 
 | From | To | Allowed | How |
 |---|---|---|---|
-| sandbox | inference endpoint | yes | policy group `inference` |
-| sandbox | collector `172.18.0.1:4319` | yes | additive preset `otlp-export` |
-| sandbox | another bot's api_server | yes, per pair | additive preset `peer-<name>` |
+| sandbox | inference endpoint | yes | base policy group `inference` |
+| sandbox | collector `172.18.0.1:4319` | yes | preset `otlp-export` |
+| sandbox | another bot's api_server | per pair | preset `peer-<name>` |
+| sandbox | GitHub, docs sites | only if `policies/<bot>.yaml` says so | per-bot preset |
 | sandbox | host loopback `127.0.0.1` | no | different network namespace |
-| sandbox | any other host | no | deny by default; HTTPS gets `CONNECT … 403` |
+| sandbox | anything else | no | deny by default; HTTPS gets `CONNECT … 403` |
 | sandbox | another sandbox's filesystem | no | separate mount namespace |
-| host | sandbox api_server | with the bot's key | bridge forward + `API_SERVER_KEY` |
-| Desktop | host | SSH | Hermes Desktop connection |
+| host | sandbox api_server | with that bot's key | bridge forward + `API_SERVER_KEY` |
+| Desktop | host | SSH | a Hermes Desktop connection |
 | Desktop | sandbox | never directly | always through the host profile |
 
 ## Where things live
 
 | | Host | Sandbox |
 |---|---|---|
-| bot's SOUL, config, sessions, memory | `~/.hermes/profiles/<bot>/` (thin) | `/sandbox/.hermes/` (real) |
-| api key for the bot's api_server | `~/.swarm/keys/<bot>.key` (600) | `/sandbox/.hermes/.env` |
-| inference key | `~/.secrets/inference.key` (600) | `/sandbox/.hermes/.env` |
+| SOUL, config, sessions, memory | `~/.hermes/profiles/<bot>/` (shim) | `/sandbox/.hermes/` (real) |
+| the bot's api_server key | `~/.swarm/keys/<bot>.key`, mode 600 | `/sandbox/.hermes/.env` |
+| inference key | `~/.secrets/inference.key`, mode 600 | `/sandbox/.hermes/.env` |
 | rendered policies | `~/.swarm/policies/` | applied to the sandbox |
 | relay config | `~/.swarm/relay/<bot>.relay-plugins.toml` | `/sandbox/.hermes/relay-plugins.toml` |
 | logs | `~/.swarm/logs/<bot>-{gateway,forward,host-gateway}.log` | `/sandbox/.hermes/logs/` |
-| LangSmith key | `~/.langsmith/api_key` (600), collector env only | never |
+| LangSmith key (optional) | `~/.langsmith/api_key`, mode 600, collector env only | never |

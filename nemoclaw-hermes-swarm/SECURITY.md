@@ -1,6 +1,8 @@
 # Security
 
-What this example protects, what it does not, and what you hold.
+The honest version. What the sandbox actually stops, what it doesn't, and which
+keys end up where. If you're deciding whether to run this on a machine you care
+about, read the second section first.
 
 ## Protected
 
@@ -10,8 +12,9 @@ processes, or other bots' files. `./swarm test` reads `/proc/self/ns/*` from
 inside each sandbox and from the host and fails if any match.
 
 **Egress is deny by default.** A bot reaches exactly what its policy lists: the
-inference endpoint, the tracing collector, and the api_server ports of its
-teammates. Anything else fails at the proxy. The suite probes an unlisted host
+inference endpoint, the tracing collector, the api_server ports of its
+teammates, and whatever a `policies/<bot>.yaml` adds (the researcher gets GitHub;
+the reviewer gets nothing extra). Anything else fails at the proxy. The suite probes an unlisted host
 from inside every sandbox and expects the denial.
 
 **Policies only grow through `swarm`, additively.** `openshell policy set`

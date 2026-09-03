@@ -1,133 +1,130 @@
 # Tracing with NeMo Relay
 
-See what each bot did: per-turn spans with inputs, outputs, token usage, and
-tool calls, filterable by bot. NeMo Relay is part of Hermes, so this is
-configuration, not code, and `./swarm up` does it by default.
+A bot that runs unattended needs a record you can read afterwards. NeMo Relay
+gives you one: a span for every turn, every model call, every tool call, with
+inputs, outputs and token counts, tagged by bot. Relay ships inside Hermes, so
+this is a config file per bot and nothing to install. `./swarm up` turns it on.
 
-## Why
+<p align="center"><img src="img/05-relay-trace.svg" alt="Relay spans from the sandbox to a collector" width="100%"></p>
 
-Four failures from building this example, and the span that exposes each:
+## Why I bother
 
-| Symptom | What the trace shows |
+Four things went wrong while we built this, and a trace exposes each one in
+about a second:
+
+| What happened | What the trace shows |
 |---|---|
-| one bot silently receives no work while others reply | no turn span for that bot in the round |
-| a chained task deadlocks | a turn that closes with zero tool-call children |
-| a bot claims it verified sources but invented them | a turn asserting verification with no tool spans beneath it |
-| a bot says `(pass)`: broken, or correct? | a completed turn span with short output means working |
+| one bot quietly got no work while the others answered | no `hermes.turn` for it that round |
+| a chained task deadlocked | a turn that closes with zero `tool.call` children |
+| a bot "verified" sources it had made up | a confident turn with no tool spans under it |
+| a bot said `(pass)` and I couldn't tell if it was broken | a completed turn with short output, so it was fine |
 
-The third took an hour to catch by hand. As a trace it is one glance.
+The third one took me an hour to catch by hand. I'm not doing that again.
 
-## Shape
+## How it's wired
 
-```
- sandbox v2-<bot>                              host
- ┌──────────────────────────────┐  OTLP/HTTP   ┌──────────────────────┐
- │ Hermes + Relay (in-process)  │─────────────▶│ swarm-otel  :4319    │──▶ debug log
- │ /sandbox/.hermes/            │   bridge     │  LangSmith key from  │──▶ LangSmith
- │   relay-plugins.toml         │  172.18.0.1  │  host file, env only │    (optional)
- └──────────────────────────────┘              └──────────────────────┘
-```
+The collector is the point, not an accessory. It runs on the host and holds any
+downstream key (LangSmith, Phoenix, whatever). A sandbox is writable by the bot
+inside it, so a credential in a sandbox belongs to that bot. Relay in the sandbox
+posts spans to the collector over the bridge; the collector forwards them.
 
-The collector is not decoration. It keeps the LangSmith key on the host.
-Sandboxes are agent-writable, so a credential inside one belongs to the agent.
-
-## What `swarm` does
-
-For every bot, `swarm up` and `swarm add`:
+For each bot, `swarm up` and `swarm add`:
 
 1. render `observability/relay-plugins.toml.tmpl` with the bot's name and the
    collector port, and copy it to `/sandbox/.hermes/relay-plugins.toml`
-2. set `HERMES_NEMO_RELAY_PLUGINS_TOML=/sandbox/.hermes/relay-plugins.toml` in
-   `/sandbox/.hermes/.env`
-3. apply `policies/otlp-export.yaml` additively so the bot may reach the collector
+2. set `HERMES_NEMO_RELAY_PLUGINS_TOML` to that path in `/sandbox/.hermes/.env`
+3. apply `policies/otlp-export.yaml` so the bot may reach the collector
 4. restart the in-sandbox gateway, because the variable is read once at start
 
-Once, it starts the collector from `observability/otel-collector-config.yaml.tmpl`.
-If `LANGSMITH_KEY_FILE` (default `~/.langsmith/api_key`) exists, spans also go to
-LangSmith under `LANGSMITH_PROJECT`. If not, they go to the collector's debug log
-and the counters, which is enough to verify the pipeline.
+Once per host it starts the collector from
+`observability/otel-collector-config.yaml.tmpl`. If `LANGSMITH_KEY_FILE`
+(default `~/.langsmith/api_key`) exists, spans also go to LangSmith under
+`LANGSMITH_PROJECT`. If not, they go to the collector's debug log and counters,
+which is enough to prove the pipeline works.
 
-Turn it off with `TRACING=off` in `swarm.env`.
+`TRACING=off` in `swarm.env` turns the whole thing off.
 
-## Verifying
+## Checking it works
 
 ```bash
-./swarm traces researcher
+./swarm traces nemoclaw-researcher
 ```
 
 prints the bot's relay state (config present, env set, activation line in its
-`agent.log`) and the collector's counters. The counters are the only trustworthy
-delivery signal:
+`agent.log`) and the collector's counters. The counters are the only signal I
+trust:
 
 ```
 otelcol_receiver_accepted_spans   45
-otelcol_exporter_sent_spans       45     (per exporter)
-otelcol_exporter_send_failed      0
+otelcol_exporter_sent_spans       45     per exporter
+otelcol_exporter_send_failed       0
 ```
 
-`./swarm test` section 9 sends a real turn and fails unless `sent` increases.
+`./swarm test` sends a real turn and fails unless `sent` goes up.
 
-## Three things that waste an afternoon
+## Three things that each cost an afternoon
 
 **Relay fails open.** A missing or malformed `relay-plugins.toml` logs one
-warning and runs with tracing off: a healthy bot exporting nothing. Never assume
-it activated. Check counters.
+warning and carries on with tracing off. You get a perfectly healthy bot that
+exports nothing. Never assume it activated; read the counters.
 
-**The env var is read once, at process start.** Writing the TOML or the variable
-while the gateway runs does nothing. `swarm` always restarts the gateway after
-touching either.
+**The env var is read once, at process start.** Write the TOML or the variable
+while the gateway is running and nothing happens. `swarm` restarts the gateway
+every time it touches either.
 
-**The activation line is in `agent.log`, not `gateway.log`.** Relay logs
+**The activation line lands in `agent.log`, not `gateway.log`.** Relay logs
 `Relay plugins are active process-wide` at INFO through Hermes' own logger, which
-writes `/sandbox/.hermes/logs/agent.log` inside the sandbox. It is not in the
-stderr captured on the host and not in `gateway.log`.
+writes `/sandbox/.hermes/logs/agent.log` inside the sandbox. It's not in the
+stderr you capture on the host, and it's not in `gateway.log`. I spent a while
+grepping the wrong file.
 
 ## The bug that makes LangSmith runs render empty
 
-Symptom: LangSmith shows a run count, every run opens empty, and
-`last_run_start_time` never moves.
+You'll know it when you see it: LangSmith shows a run count, every run opens
+blank, and `last_run_start_time` never moves.
 
-Cause: Relay exports a span when its scope closes. A gateway session stays open
-for days, so the enclosing `hermes.session` scope never closes and never exports.
-Every span Relay does send references a parent LangSmith never receives. It
-accepts them, counts them, and cannot render them.
+Relay exports a span when its scope closes. A gateway session stays open for
+days, so the outer `hermes.session` scope never closes and never exports. Every
+span that does arrive names a parent LangSmith never received. LangSmith accepts
+them, counts them, and can't draw them.
 
-Fix: the `transform/root` processor in the collector config clears the dangling
-parent on `hermes.turn` and `hermes.task_run`, so each turn is a real root. The
-template ships with it. Note the 16-zero form: `set(parent_span_id.string, "")`
+The `transform/root` processor in the collector template clears the dangling
+parent on `hermes.turn` and `hermes.task_run`, so each turn becomes a real root.
+One detail: it has to be the sixteen-zero form. `set(parent_span_id.string, "")`
 passes validation and does nothing.
 
 ## What a trace looks like
 
 ```
-hermes.turn                                root
+hermes.turn                                agent.name=nemoclaw-researcher
 └── hermes.task_run
-    └── hermes.logical_llm_call
-        └── chat <model>                   gen_ai.usage.*, finish_reasons
+    ├── hermes.logical_llm_call
+    │   └── chat nemotron-3-super          gen_ai.usage.input_tokens=3372 …
+    ├── tool.call terminal                 hostname
+    ├── tool.call message_teammate         → nemoclaw-reviewer
+    └── hermes.logical_llm_call            finish_reason=stop
 ```
 
-Attributes follow the OTel GenAI conventions: `gen_ai.input.messages`,
-`gen_ai.output.messages`, `gen_ai.usage.input_tokens`,
-`gen_ai.usage.output_tokens`, `gen_ai.request.model`, plus `agent.name` from the
-resource attributes so you can filter by bot.
+Attributes follow the OpenTelemetry GenAI conventions (`gen_ai.request.model`,
+`gen_ai.input.messages`, `gen_ai.output.messages`, `gen_ai.usage.*`), plus
+`agent.name` as a resource attribute so you can filter by bot.
 
-## Known limitation: one tree per bot, not per handoff
+## One tree per bot, not per handoff
 
-A `message_teammate` handoff appears as two traces: the researcher's turn, and
-separately the reviewer's turn it triggered. The plugin sends only
-`Content-Type` and `Authorization`; no causal context crosses the boundary.
+A `message_teammate` handoff shows up as two traces: the researcher's turn, and
+separately the reviewer's turn it caused. The plugin sends `Content-Type` and
+`Authorization` and nothing else, so no causal context crosses the wall.
 
-Relay has the API to link them (`capture_propagation_context`, verified working
-inside a sandbox). The sender half is a small plugin change. The receiver half
-needs the api_server in Hermes core to read a header and seed the scope, which is
-a patch `hermes update` would overwrite. Deliberately not done here; if Hermes
-grows a hook for it, this example will use it.
+Relay has the API to link them; I tested `capture_propagation_context` inside a
+sandbox and it works. The sender side is a small plugin change. The receiver side
+means the api_server in Hermes core reading a header and seeding the scope, and a
+patch there gets overwritten by the next `hermes update`. So it's not done here.
+If Hermes grows a hook for it, this example will use it.
 
 ## Other backends
 
-The collector speaks OTLP; point `exporters` at anything that accepts it. For
+The collector speaks OTLP, so point `exporters` at anything that accepts it. For
 Arize Phoenix, set `type = "openinference"` in the relay template instead of
-`gen_ai`. For debugging Relay itself, `type = "full"` emits every
-`nemo_relay.*` attribute. Two endpoints of different types must not share an
-endpoint and transport; Relay derives span IDs deterministically and rejects
-the collision.
+`gen_ai`. For debugging Relay itself, `type = "full"` emits every `nemo_relay.*`
+attribute. Two endpoints of different types can't share an endpoint and
+transport; Relay derives span IDs deterministically and refuses the collision.

@@ -1,61 +1,69 @@
 # Customizing
 
-Three things define a bot. Change any of them independently.
+Three things make a bot what it is, and you can change each one on its own.
 
 | What | Where | Changes |
 |---|---|---|
-| Role (SOUL) | `souls/<name>.md` | how the bot thinks, what it refuses, how it writes |
-| Policy | `policies/bot.template.yaml`, plus additive presets | what it can reach on the network and disk |
-| Model | `swarm.env` | which endpoint, which model, context and token budget |
+| role (SOUL) | `souls/<bot>.md` | how it thinks, what it refuses, how it writes |
+| policy | `policies/bot.template.yaml` + `policies/<bot>.yaml` | what it can reach on the network and disk |
+| model | `swarm.env` | which endpoint, which model, how much context |
 
-Start with the role. Most of what makes a bot useful is there and it needs no
-infrastructure change.
+Start with the role. Most of what makes a bot useful lives there, and changing
+it costs nothing.
 
-## The role (SOUL.md)
+## The role
 
 A soul is a markdown file that becomes the bot's system prompt. `./swarm add`
-writes it to `/sandbox/.hermes/SOUL.md` inside the sandbox and appends two short
-sections: a Runtime note (sandbox name, endpoint, egress posture) and a Teammates
-note (how to hand work to another bot).
+copies it to `/sandbox/.hermes/SOUL.md` inside the sandbox and appends two short
+sections of its own: a Runtime note (you're a NemoClaw bot in sandbox X, here's
+what you can reach) and a Teammates note (how to hand work to another bot).
 
 ```bash
-./swarm add auditor --soul ./souls/reviewer.md
-./swarm add auditor --role "You audit Terraform for security problems."
+./swarm add nemoclaw-auditor --soul ./souls/nemoclaw-reviewer.md
+./swarm add nemoclaw-auditor --role "You audit Terraform for security problems."
 ```
 
-To change a running bot's role, edit the file and re-run `./swarm add` for that
-bot after `./swarm rm`; roles are part of the bot's identity, not hot config.
+Roles are identity, not hot config. To change a running bot's role: `./swarm rm`
+it, edit the file, `./swarm add` it again.
 
-### What separates a useful role from a decorative one
+### What makes a role actually work
 
-**Give it a method, not just an identity.** "You are a researcher" produces
-generic output. A numbered procedure produces consistent output. See
-`souls/researcher.md` for the four-phase pattern.
+I've watched a lot of these fail. The ones that work share a few habits.
 
-**Write the rules that stop the failure you care about.** Each of these was added
-after a real one:
+**A method, not a job title.** "You are a researcher" gets you generic output.
+A numbered procedure gets you the same shape of answer every time. Look at
+`souls/nemoclaw-researcher.md`: plan, research, try to disprove yourself, then
+write.
+
+**Rules aimed at the failure you actually saw.** Every line below exists because
+a bot did the opposite in front of us:
 
 ```markdown
 ## Hard rules
 - Never invent a source, citation, URL, number, or quote.
 - Never cite an issue or PR you did not fetch in THIS session. Recalling an
   identifier from memory is fabrication even when it happens to exist.
-- Separate what you found from what you inferred from what you assume, and use
-  those words.
+- Say what you found, what you inferred, and what you assumed, using those words.
 - If a tool cannot reach what you need, name the blocker. A blocked source is a
-  finding, not something to work around.
+  finding, not a thing to route around.
 ```
 
-**Answer in the same message.** Nothing re-prompts a bot. A reply of "I'll look
-into that and report back" is a dead end for whoever asked.
+The second one matters more than it looks. A bot with web access will produce
+plausible GitHub issue numbers from training data, with confidence, unless told
+not to. One of ours reported nine issues as open. Four were closed. Zero tool
+calls that turn.
+
+**Answer now.** Nothing re-prompts a bot. "I'll look into that and report back"
+is a dead end for whoever asked.
 
 ```markdown
 Deliver a usable answer in THE SAME MESSAGE. Never ask the user to scope the
 task and never promise to report back later.
 ```
 
-**Cap retries.** A bot that hits a policy denial and tries three workarounds
-burns six minutes and produces nothing.
+**Stop after three.** A bot that hits a policy denial and tries three workarounds
+burns six minutes and ships nothing. This paragraph turned that into a 57 second
+answer with ten cited sources:
 
 ```markdown
 If a source is unreachable, report what you have and name the blocker in one
@@ -65,57 +73,61 @@ line. Three failed attempts with the same tool means the path is closed.
 ## The policy
 
 Every bot starts from `policies/bot.template.yaml`: a read-only system, a
-writable `/sandbox`, and exactly one network group, `inference`. Everything
-else is denied. `./swarm` then adds presets as needed:
+writable `/sandbox`, and exactly one network destination, your model endpoint.
+Everything else is denied. `swarm` then adds presets:
 
-| Preset | Added by | Allows |
+| Preset | Applied to | Allows |
 |---|---|---|
-| `otlp-export` | `swarm up` / `swarm add` when `TRACING=on` | the collector on the bridge |
-| `peer-<name>` | mesh sync, one per teammate | that teammate's api_server port |
+| `otlp-export` | every bot, when `TRACING=on` | the collector on the bridge |
+| `peer-<name>` | both sides of each pair | that teammate's api_server port |
+| `policies/<bot>.yaml` | a bot with a file by that name | whatever you list |
 
-To give one bot more reach, write your own preset and apply it additively:
+That last row is how you give one bot more reach than another. The researcher
+ships with `policies/nemoclaw-researcher.yaml`:
 
 ```yaml
-# policies/web-research.yaml
 preset:
   name: web-research
-  description: Read public documentation sites
+  description: Read public docs and source on GitHub and docs.nvidia.com
 network_policies:
   web-research:
     name: web-research
     endpoints:
-      - { host: docs.nvidia.com, port: 443, tls: skip }
       - { host: github.com, port: 443, tls: skip }
       - { host: raw.githubusercontent.com, port: 443, tls: skip }
+      - { host: docs.nvidia.com, port: 443, tls: skip }
     binaries:
       - { path: /sandbox/.hermes/hermes-agent/venv/bin/python }
       - { path: /usr/bin/curl }
 ```
 
+Copy it to `policies/nemoclaw-reviewer.yaml` and the reviewer gets the same
+reach on its next `add`. Or apply one by hand to a running bot:
+
 ```bash
-nemoclaw v2-researcher policy-add --from-file policies/web-research.yaml --yes
+nemoclaw nemoclaw-reviewer policy-add --from-file policies/nemoclaw-researcher.yaml --yes
 ```
 
-Rules that trip everyone:
+Things that trip everyone the first time:
 
-- **Never `openshell policy set`.** It replaces the whole policy and drops the
-  inference and peer rules. Only add.
-- **Presets need `preset.name` and no top-level `version`.** The template that
-  `swarm` renders for sandbox creation has `version: 3`; presets do not.
-- **Policies bind to binaries as well as hosts.** Allowing `github.com` is not
-  enough if the program making the call is not in `binaries`. `curl` gets 200
-  while `python` gets 403 until you list it.
-- **Redirects are separate decisions.** `curl -L https://astral.sh` fails even
-  with `astral.sh` allowed, because it redirects to `releases.astral.sh`.
-- **The file must end in `.yaml`.**
+- **Never `openshell policy set`.** It replaces the whole policy and silently
+  drops the model and peer rules. Only ever add.
+- **Presets need `preset.name` and must not have a top-level `version`.** The
+  template used at sandbox creation has `version: 3`; presets don't.
+- **Policies bind to binaries, not just hosts.** Allow `github.com` and forget
+  to list `python`, and `curl` gets 200 while the bot's own tool gets 403.
+- **Redirects are separate decisions.** `curl -L https://astral.sh` fails with
+  `astral.sh` allowed, because the 301 lands on `releases.astral.sh`.
+- **The file has to end in `.yaml`.**
 
-The status codes inside a sandbox tell you what happened: 403 is policy, 502 is
-allowed-but-nothing-listening (usually a host loopback service), 000 with
-`CONNECT tunnel failed, response 403` on stderr is policy denying HTTPS.
+Reading the status code from inside a sandbox: 403 is policy. 502 is
+allowed-but-nothing-listening, usually a service bound to the host's loopback,
+which a sandbox can't see. 000 with `CONNECT tunnel failed, response 403` on
+stderr is policy denying HTTPS.
 
 ## The model
 
-All bots share one endpoint and model from `swarm.env`:
+Every bot shares one endpoint and model from `swarm.env`:
 
 ```bash
 INFERENCE_BASE_URL=https://your-endpoint/v1
@@ -124,42 +136,41 @@ INFERENCE_CONTEXT_LENGTH=131072
 INFERENCE_MAX_TOKENS=8192
 ```
 
-The key lives in `INFERENCE_KEY_FILE` (default `~/.secrets/inference.key`, mode
-600). `swarm` copies it into each sandbox's `.env` as `INFERENCE_API_KEY`; it
-never appears in a policy, a log, or the repo.
+The key is read from `INFERENCE_KEY_FILE` (default `~/.secrets/inference.key`,
+mode 600) and written into each sandbox's `.env`. It never appears in a policy,
+a log, or this repo.
 
-Any OpenAI-compatible server works: a hosted API, NVIDIA NIM, vLLM, SGLang. The
-example was verified against a hosted Nemotron 3 Super endpoint. Two things to
-check when switching: the model must handle tool calls well (a bot is nothing but
-tool calls), and `INFERENCE_CONTEXT_LENGTH` must not exceed what the server
+Anything OpenAI-compatible works: NVIDIA NIM, a hosted API, vLLM, SGLang. We
+verified against a hosted Nemotron 3 Super endpoint. Two things to check when
+you switch: the model has to be good at tool calls (a bot is nothing but tool
+calls), and `INFERENCE_CONTEXT_LENGTH` can't exceed what the server actually
 serves or the first long turn gets a 400.
 
-To give one bot a different model, edit `/sandbox/.hermes/config.yaml` in its
-sandbox (`model.default`, `model.base_url`) and restart its gateway with
-`./swarm up`. There is deliberately no per-bot model setting in `swarm.env`; a
-fleet on one model is easier to reason about.
+Want one bot on a different model? Edit `/sandbox/.hermes/config.yaml` inside
+its sandbox and `./swarm up` to restart it. There's deliberately no per-bot model
+knob in `swarm.env`. A fleet on one model is a fleet you can reason about.
 
 ## More bots
 
 ```bash
-./swarm add analyst --soul souls/critic.md
-./swarm add qa --soul souls/qa.md
+./swarm add nemoclaw-scout --soul souls/nemoclaw-critic.md
+./swarm add nemoclaw-qa --soul souls/nemoclaw-qa.md
 ```
 
-Each `add` is 3 to 4 minutes and fully meshes the new bot with every existing
-one. There is no model load: bots share the endpoint. Sandbox memory and CPU are
-`SANDBOX_MEMORY` and `SANDBOX_CPU` in `swarm.env`.
+Each `add` takes 3 to 4 minutes and meshes the new bot with every existing one,
+both directions. No model loads; bots share the endpoint. Per-sandbox memory and
+CPU are `SANDBOX_MEMORY` and `SANDBOX_CPU` in `swarm.env`.
 
-To make new bots part of the default fleet that `./swarm up` creates on a clean
-host, add them to `BOTS` and drop a `souls/<name>.md` in place.
+To make a bot part of the default fleet on a fresh host, add its name to `BOTS`
+and drop a `souls/<bot>.md` in place.
 
 ## Hermes inside the sandbox
 
-Hermes is baked into the image at `HERMES_REF` (a git tag). To move the fleet
-to a new release: change `HERMES_REF`, `./swarm down --yes`, `./swarm up`. Do
-not `hermes update` inside a sandbox; the image is the source of truth and a
-mixed fleet is hard to debug.
+Hermes is baked into the image at the tag in `HERMES_REF`. To move the fleet to
+a new release: change `HERMES_REF`, `./swarm down --yes`, `./swarm up`. Don't
+`hermes update` inside a sandbox. The image is the source of truth, and a fleet
+on mixed versions is miserable to debug.
 
 Skills and plugins for a bot go in `/sandbox/.hermes/skills/` and
-`/sandbox/.hermes/plugins/` inside its sandbox. The `teammates` plugin is the
-only one `swarm` installs.
+`/sandbox/.hermes/plugins/` inside its sandbox. `teammates` is the only plugin
+`swarm` installs.
