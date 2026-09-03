@@ -1,19 +1,20 @@
 <p align="center">
-  <img src="docs/img/01-one-request.svg" alt="One request through Hermes Desktop, a NemoClaw sandbox, and NeMo Relay" width="100%">
+  <img src="docs/img/hero.png" alt="Two NemoClaw bots in a Hermes Desktop group chat: the researcher pulls live GitHub issues and hands off, the reviewer picks the security-relevant one" width="100%">
 </p>
 
 # NemoClaw bots: Hermes agents you can leave running
 
-This is a team of [Hermes](https://github.com/NousResearch/hermes-agent) bots on
-one Linux host. Each bot lives in its own [NVIDIA OpenShell](https://github.com/NVIDIA/OpenShell)
+This is a team of [Hermes](https://github.com/NousResearch/hermes-agent) bots.
+Each bot lives in its own [NVIDIA OpenShell](https://github.com/NVIDIA/OpenShell)
 sandbox managed by [NemoClaw](https://github.com/NVIDIA/NemoClaw). Each one is
 traced by [NeMo Relay](https://docs.nvidia.com/nemo/relay/). You talk to them
-from Hermes Desktop like coworkers in a group chat:
+from Hermes Desktop like coworkers in a group chat. That screenshot is real:
+the researcher fetched today's open issues from GitHub because its policy lets
+it, the reviewer judged them without web access because its policy doesn't,
+and the handoff between them crossed a sandbox boundary.
 
-> @nemoclaw-researcher what changed in Hermes 0.21 for bot mode? Hand it to
-> @nemoclaw-reviewer for a security read.
-
-One command builds it. The same command brings it back after a reboot.
+One command builds it, on a Linux host or on your Mac. The same command brings
+it back after a reboot.
 
 ```
 $ ./swarm up
@@ -85,6 +86,12 @@ only path.
 | ![](https://img.shields.io/badge/-NemoClaw%20%2B%20OpenShell-76b900?style=flat-square&logoColor=black) | the boundary | one sandbox per bot; kernel namespaces; deny-by-default egress with hot-reloadable YAML policy; the inference key never leaves the sandbox's own `.env` |
 | ![](https://img.shields.io/badge/-NeMo%20Relay-76b900?style=flat-square&logoColor=black) | the record | ships inside Hermes; OpenTelemetry GenAI spans per turn, tool call, and model call, to a collector you control |
 
+One request, end to end:
+
+<p align="center">
+  <img src="docs/img/01-one-request.svg" alt="One request through Hermes Desktop, a NemoClaw sandbox, and NeMo Relay" width="100%">
+</p>
+
 ## Ten minutes to a working swarm
 
 Two ways to run it. Same command, same bots, same tests.
@@ -120,7 +127,7 @@ Local in the Bots pane.
 it at the host, quit and reopen. The bots appear under that connection.
 
 Either way, `nemoclaw-researcher` and `nemoclaw-reviewer` show up. Put them in a
-group chat and try the prompt at the top. If something looks dead, restart the
+group chat and try the prompt from the screenshot. If something looks dead, restart the
 Desktop app first. Nine times out of ten the bots are fine and the client lost
 its socket.
 
