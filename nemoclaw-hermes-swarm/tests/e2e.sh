@@ -290,7 +290,12 @@ if [[ "${TRACING:-on}" == on && "${SWARM_TEST_LIFECYCLE:-on}" == on ]]; then
   section "13. tracing opt-out"
   anchor="${BOTS_FOUND[0]}"; asb=$(sandbox_of "$anchor")
   check "tracing on: relay env present in $anchor" "$(sbx "$asb" 'grep -c HERMES_NEMO_RELAY_PLUGINS_TOML /sandbox/.hermes/.env' 30 | tail -1)" 1
-  TRACING=off "$SWARM_ROOT/swarm" up >/dev/null 2>&1 || true
+  # swarm.env is sourced after the environment, so the file value wins; turning
+  # tracing off is an edit to swarm.env, which is what this does on a copy.
+  offenv=$(mktemp /tmp/swarm-off.XXXXXX); sed 's/^TRACING=.*/TRACING=off/' "$ENV_FILE" > "$offenv"
+  grep -q '^TRACING=off' "$offenv" || printf 'TRACING=off\n' >> "$offenv"
+  SWARM_ENV="$offenv" "$SWARM_ROOT/swarm" up >/dev/null 2>&1 || true
+  rm -f "$offenv"
   check "tracing off: relay env removed from $anchor" "$(sbx "$asb" 'grep -c HERMES_NEMO_RELAY_PLUGINS_TOML /sandbox/.hermes/.env' 30 | tail -1)" 0
   check "tracing off: relay toml removed" "$(sbx "$asb" 'test -f /sandbox/.hermes/relay-plugins.toml && echo yes || echo no' 30 | tail -1)" no
   check "tracing off: collector container removed" "$(docker inspect swarm-otel >/dev/null 2>&1 && echo present || echo gone)" gone
@@ -311,11 +316,12 @@ def ch(t,d): return struct.pack(">I",len(d))+t+d+struct.pack(">I",zlib.crc32(t+d
 open(sys.argv[1],"wb").write(b"\x89PNG\r\n\x1a\n"+ch(b"IHDR",struct.pack(">IIBBBBB",W,H,8,2,0,0,0))+ch(b"IDAT",zlib.compress(b"".join(rows)))+ch(b"IEND",b""))
 PY
   # default call: no image crosses; the vision bot must say it was not given one
-  out=$(timeout 300 hermes -p "$other" chat --image "$img" -q "Call tool_call with name message_teammate, arguments teammate=nemoclaw-vision message='what colour is the attached image? one word'. Do not set with_images. Reply with the raw tool result JSON only." 2>/dev/null | strip_ansi)
+  nonce=$RANDOM$RANDOM
+  out=$(timeout 300 hermes -p "$other" chat --image "$img" -q "Call tool_call with name message_teammate, arguments teammate=nemoclaw-vision message='probe $nonce: what colour is the attached image? one word'. Do not set with_images. Reply with the raw tool result JSON only." 2>/dev/null | strip_ansi)
   check "default: images_forwarded absent or 0" "$(grep -q '"images_forwarded": *[1-9]' <<<"$out" && echo forwarded || echo none)" none
-  check "default: vision bot says it was not given an image" "$(grep -qiE 'not (given|attached|see)|no image|was not provided' <<<"$out" && echo yes || echo no)" yes
+  check "default: vision bot says it was not given an image" "$(grep -qiE "not (given|attached|see|provided|receive)|no image|wasn.t (given|attached|provided)|don.t see an image|cannot see|unable to see" <<<"$out" && echo yes || echo no)" yes
   # explicit opt-in: the image crosses and the count says so
-  out=$(timeout 300 hermes -p "$other" chat --image "$img" -q "Call tool_call with name message_teammate, arguments teammate=nemoclaw-vision message='what colour is the attached image? one word' with_images=true. Reply with the raw tool result JSON only." 2>/dev/null | strip_ansi)
+  out=$(timeout 300 hermes -p "$other" chat --image "$img" -q "Call tool_call with name message_teammate, arguments teammate=nemoclaw-vision message='probe $nonce-b: what colour is the attached image? one word' with_images=true. Reply with the raw tool result JSON only." 2>/dev/null | strip_ansi)
   check "with_images: images_forwarded is 1" "$(grep -o '"images_forwarded": *[0-9]*' <<<"$out" | tr -dc '0-9')" 1
   check "with_images: vision bot saw red" "$(grep -qi 'red' <<<"$out" && echo yes || echo no)" yes
   rm -f "$img"
