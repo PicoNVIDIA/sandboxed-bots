@@ -46,7 +46,7 @@ ENV_FILE="${SWARM_ENV:-$SWARM_ROOT/swarm.env}"
 [[ "${1:-}" == "presubmit" ]] && exec "$SWARM_ROOT/tests/presubmit.sh"
 if [[ ! -f "$ENV_FILE" ]]; then
   if [[ "${1:-}" == "-h" || "${1:-}" == "--help" || -z "${1:-}" ]]; then usage; exit 2; fi
-  printf 'swarm: no config at %s\n  fix: cp %s/swarm.env.example %s && edit it\n' \
+  printf 'swarm: no config at %s\n  fix: cp %s/swarm.env.example %s\n  (the example works as-is with the NVIDIA inference API; edit it for another endpoint)\n' \
     "$ENV_FILE" "$SWARM_ROOT" "$ENV_FILE" >&2
   exit 2
 fi

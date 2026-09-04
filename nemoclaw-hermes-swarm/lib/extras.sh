@@ -80,7 +80,7 @@ bot_install_extras() {
 # it was given. Turn the toolset off for vision bots.
 bot_toolset_extras() {
   local name="$1" sb
-  [[ "$(bot_vision "$name")" == on ]] || return 0
+  [[ "$(bot_vision "$name")" == true ]] || return 0
   sb=$(sandbox_of "$name")
   # `config set` accepts a bare toolset name here and stores the list form.
   sbx "$sb" '$H -m hermes_cli.main config set agent.disabled_toolsets vision >/dev/null 2>&1 && echo TS-OK' 120 \
