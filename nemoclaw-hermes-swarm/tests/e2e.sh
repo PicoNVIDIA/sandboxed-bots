@@ -225,5 +225,101 @@ else
   dim "nemoclaw-vss not present; skipped"
 fi
 
+# ── 12. lifecycle: add reconciles, down respects BOTS, ownership, failed delete ──
+# Uses a throwaway bot so the fleet above is never disturbed. Skipped with
+# SWARM_TEST_LIFECYCLE=off (it costs about four minutes).
+if [[ "${SWARM_TEST_LIFECYCLE:-on}" == on ]]; then
+  section "12. lifecycle"
+  tb=nemoclaw-zz-lifecycle; tsb=$(sandbox_of "$tb"); anchor="${BOTS_FOUND[0]}"
+  bot_exists "$tb" 2>/dev/null && "$SWARM_ROOT/swarm" rm "$tb" --yes >/dev/null 2>&1
+
+  # add: the new bot exists, and the EXISTING bots were reconciled (soul lists it, gateway restarted)
+  before=$(sbx "$(sandbox_of "$anchor")" 'stat -c %Y /sandbox/.hermes/SOUL.md' 30 | tail -1)
+  "$SWARM_ROOT/swarm" add "$tb" --role "You are a lifecycle test bot. Reply with exactly what you are asked." >/dev/null 2>&1
+  check "add: $tb created and Ready" "$(sandbox_phase "$tsb")" Ready
+  check "add: ownership marker written (host)" "$(test -s "$SWARM_STATE/owned/$tsb" && echo yes || echo no)" yes
+  check "add: ownership marker written (sandbox)" "$(sbx "$tsb" 'test -s /sandbox/.hermes/.swarm-owner && echo yes || echo no' 30 | tail -1)" yes
+  after=$(sbx "$(sandbox_of "$anchor")" 'stat -c %Y /sandbox/.hermes/SOUL.md' 30 | tail -1)
+  check "add: existing bot $anchor soul was rewritten" "$([[ "$after" -gt "$before" ]] && echo yes || echo no)" yes
+  check "add: $anchor peers include $tb" "$(mesh_peers_of "$anchor" | grep -cx "$tb")" 1
+  check "add: $anchor host profile has dropbox marker state" "$(test -f "$HOME/.hermes/profiles/$anchor/.swarm-owner" && echo yes || echo no)" yes
+
+  # down (default scope) must NOT remove a bot outside BOTS
+  "$SWARM_ROOT/swarm" down --yes >/dev/null 2>&1 || true
+  check "down: $tb (not in BOTS) survives swarm down" "$(sandbox_phase "$tsb")" Ready
+  # ...and the BOTS bots need to come back for the rest of the suite
+  "$SWARM_ROOT/swarm" up >/dev/null 2>&1 || true
+  check "up: $anchor restored after down" "$(sandbox_phase "$(sandbox_of "$anchor")")" Ready
+
+  # ownership: a foreign sandbox with our name is refused by create/restore/destroy
+  fk=$(bot_key_file "$tb"); fp=$(bot_port_file "$tb")
+  mv "$SWARM_STATE/owned/$tsb" "$SWARM_STATE/owned/$tsb.bak"
+  check "ownership: restore refuses a sandbox without our marker" \
+    "$( (bot_restore "$tb" >/dev/null 2>&1 && echo ran) || echo refused)" refused
+  check "ownership: destroy refuses it and keeps the key" \
+    "$( (bot_destroy "$tb" >/dev/null 2>&1 && echo ran) || { test -s "$fk" && echo refused-kept; })" refused-kept
+  check "ownership: sandbox untouched" "$(sandbox_phase "$tsb")" Ready
+  mv "$SWARM_STATE/owned/$tsb.bak" "$SWARM_STATE/owned/$tsb"
+
+  # failed delete keeps state: simulate by making `openshell sandbox delete` a no-op
+  mkdir -p /tmp/swarm-fakebin; cat > /tmp/swarm-fakebin/openshell <<'EOS'
+#!/usr/bin/env bash
+if [[ "$1 $2" == "sandbox delete" ]]; then exit 0; fi
+exec "$(command -v -p openshell 2>/dev/null || ls /usr/local/bin/openshell "$HOME/.local/bin/openshell" 2>/dev/null | head -1)" "$@"
+EOS
+  chmod +x /tmp/swarm-fakebin/openshell
+  check "failed delete: bot_destroy returns non-zero" \
+    "$( (PATH="/tmp/swarm-fakebin:$PATH" bot_destroy "$tb" >/dev/null 2>&1 && echo ok) || echo nonzero)" nonzero
+  check "failed delete: key kept" "$(test -s "$fk" && echo yes || echo no)" yes
+  check "failed delete: port kept" "$(test -s "$fp" && echo yes || echo no)" yes
+  check "failed delete: host profile kept" "$(hermes profile list 2>/dev/null | strip_ansi | awk '{print $1}' | grep -cx "$tb")" 1
+  rm -rf /tmp/swarm-fakebin
+
+  # real removal, then the others are reconciled back
+  "$SWARM_ROOT/swarm" rm "$tb" --yes >/dev/null 2>&1
+  check "rm: $tb gone" "$(sandbox_exists "$tsb" && echo present || echo gone)" gone
+  check "rm: key removed" "$(test -s "$fk" && echo yes || echo no)" no
+  check "rm: $anchor peers no longer include $tb" "$(mesh_peers_of "$anchor" | grep -cx "$tb")" 0
+  check "rm: ownership marker removed" "$(test -e "$SWARM_STATE/owned/$tsb" && echo yes || echo no)" no
+else
+  dim "lifecycle section skipped (SWARM_TEST_LIFECYCLE=off)"
+fi
+
+# ── 13. tracing opt-out ───────────────────────────────────────────────────────
+if [[ "${TRACING:-on}" == on && "${SWARM_TEST_LIFECYCLE:-on}" == on ]]; then
+  section "13. tracing opt-out"
+  anchor="${BOTS_FOUND[0]}"; asb=$(sandbox_of "$anchor")
+  check "tracing on: relay env present in $anchor" "$(sbx "$asb" 'grep -c HERMES_NEMO_RELAY_PLUGINS_TOML /sandbox/.hermes/.env' 30 | tail -1)" 1
+  TRACING=off "$SWARM_ROOT/swarm" up >/dev/null 2>&1 || true
+  check "tracing off: relay env removed from $anchor" "$(sbx "$asb" 'grep -c HERMES_NEMO_RELAY_PLUGINS_TOML /sandbox/.hermes/.env' 30 | tail -1)" 0
+  check "tracing off: relay toml removed" "$(sbx "$asb" 'test -f /sandbox/.hermes/relay-plugins.toml && echo yes || echo no' 30 | tail -1)" no
+  check "tracing off: collector container removed" "$(docker inspect swarm-otel >/dev/null 2>&1 && echo present || echo gone)" gone
+  "$SWARM_ROOT/swarm" up >/dev/null 2>&1 || true
+  check "tracing on again: relay env restored" "$(sbx "$asb" 'grep -c HERMES_NEMO_RELAY_PLUGINS_TOML /sandbox/.hermes/.env' 30 | tail -1)" 1
+  check "tracing on again: collector running" "$(docker inspect -f '{{.State.Running}}' swarm-otel 2>/dev/null)" true
+fi
+
+# ── 14. image forwarding is opt-in ────────────────────────────────────────────
+if bot_exists nemoclaw-vision 2>/dev/null && (( ${#BOTS_FOUND[@]} >= 2 )); then
+  section "14. image forwarding is opt-in"
+  other="${BOTS_FOUND[0]}"; [[ "$other" == nemoclaw-vision ]] && other="${BOTS_FOUND[1]}"
+  img=$(mktemp /tmp/swarm-red.XXXXXX.png)
+  python3 - "$img" <<'PY'
+import struct, zlib, sys
+W=H=16; rows=[bytes([0])+bytes([255,0,0])*W for _ in range(H)]
+def ch(t,d): return struct.pack(">I",len(d))+t+d+struct.pack(">I",zlib.crc32(t+d)&0xffffffff)
+open(sys.argv[1],"wb").write(b"\x89PNG\r\n\x1a\n"+ch(b"IHDR",struct.pack(">IIBBBBB",W,H,8,2,0,0,0))+ch(b"IDAT",zlib.compress(b"".join(rows)))+ch(b"IEND",b""))
+PY
+  # default call: no image crosses; the vision bot must say it was not given one
+  out=$(timeout 300 hermes -p "$other" chat --image "$img" -q "Call tool_call with name message_teammate, arguments teammate=nemoclaw-vision message='what colour is the attached image? one word'. Do not set with_images. Reply with the raw tool result JSON only." 2>/dev/null | strip_ansi)
+  check "default: images_forwarded absent or 0" "$(grep -q '"images_forwarded": *[1-9]' <<<"$out" && echo forwarded || echo none)" none
+  check "default: vision bot says it was not given an image" "$(grep -qiE 'not (given|attached|see)|no image|was not provided' <<<"$out" && echo yes || echo no)" yes
+  # explicit opt-in: the image crosses and the count says so
+  out=$(timeout 300 hermes -p "$other" chat --image "$img" -q "Call tool_call with name message_teammate, arguments teammate=nemoclaw-vision message='what colour is the attached image? one word' with_images=true. Reply with the raw tool result JSON only." 2>/dev/null | strip_ansi)
+  check "with_images: images_forwarded is 1" "$(grep -o '"images_forwarded": *[0-9]*' <<<"$out" | tr -dc '0-9')" 1
+  check "with_images: vision bot saw red" "$(grep -qi 'red' <<<"$out" && echo yes || echo no)" yes
+  rm -f "$img"
+fi
+
 printf '\n  ==============================================\n  SUMMARY: %d passed, %d failed\n  ==============================================\n' "$PASS" "$FAIL"
 (( FAIL == 0 ))
