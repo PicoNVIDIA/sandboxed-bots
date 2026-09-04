@@ -20,32 +20,37 @@ here touches the two default bots.
 
 ## The vision bot
 
-Two lines in `swarm.env`, then add it:
+Three steps. Same endpoint and key as the other bots; only the model differs.
+
+**1. Name the model.** Uncomment these two lines in `swarm.env`. The second
+one matters: Hermes strips image parts before they reach any model it can't
+find on models.dev, which is every model behind a custom endpoint, so a
+vision model has to be declared. Without it the bot says "I cannot see the
+attached image" and means it.
 
 ```bash
 INFERENCE_MODEL_NEMOCLAW_VISION=nvidia/nvidia/nemotron-3-nano-omni-30b-a3b-reasoning
 INFERENCE_VISION_NEMOCLAW_VISION=on
+```
 
+**2. Add the bot.** Creates the sandbox, meshes it with the others, and tells
+every other bot's soul that this one can see.
+
+```bash
 ./swarm add nemoclaw-vision
 ```
 
-Same endpoint and key as the other bots; only the model differs. The second
-line matters: Hermes strips image parts before they reach any model it can't
-find on models.dev, which is every model behind a custom endpoint, so a
-vision model has to be declared. Without it the bot says "I cannot see the
-attached image" and means it.
+**3. Try it.** Same path Desktop uses.
+
+```bash
+hermes -p nemoclaw-vision chat --image photo.jpg -q "What is in this picture?"
+```
 
 Any model that takes `image_url` parts and calls tools will do. On the NVIDIA
 inference API we tested `nemotron-3-nano-omni-30b-a3b-reasoning` (works; it is
 a reasoning model, keep `INFERENCE_MAX_TOKENS` at 8192 or the answer ends up
 in the reasoning field). `nemotron-nano-12b-v2-vl` sees images but rejects
 `tool_choice: auto`, so it cannot be a bot.
-
-Test it from the host, the same path Desktop uses:
-
-```bash
-hermes -p nemoclaw-vision chat --image photo.jpg -q "What is in this picture?"
-```
 
 ## The VSS bot
 
@@ -55,40 +60,55 @@ RT-VLM and return text, plus a skill that says when to use which. RT-VLM is
 the vision model from the [Video Search and Summarization blueprint](https://github.com/NVIDIA-AI-Blueprints/video-search-and-summarization);
 we run only that container, not the full blueprint.
 
-### 1. Run RT-VLM
+Seven steps, on the host with the GPU. One container, one GPU, an NGC key
+for the model weights.
 
-On the host with the GPU. One container, one GPU, an NGC key for the model
-weights.
+**1. Store your NGC key.** Prompts with echo off, saves mode 600. It is only
+ever read by `docker compose` on the host; no sandbox sees it.
 
 ```bash
-cd examples/vss
-cp .env.example .env
-$EDITOR .env                        # VSS_GPU, and VSS_BIND to your bridge address
-NGC_API_KEY=$(cat ~/.secrets/ngc.key) docker compose up -d
-docker compose logs -f              # first start downloads ~16 GB of weights; 10 to 20 min
+./swarm key vss
+```
+
+**2. Make the RT-VLM config.** The defaults bind to the OpenShell bridge
+address on GPU 1. Edit `VSS_GPU` if that is not the free one.
+
+```bash
+cp examples/vss/.env.example examples/vss/.env
+```
+
+**3. Start RT-VLM.** The image is public; the first start downloads about
+16 GB of model weights with your NGC key, 10 to 20 minutes.
+
+```bash
+NGC_API_KEY=$(cat ~/.secrets/ngc.key) docker compose -f examples/vss/compose.yml up -d
+```
+
+**4. Wait for it.** Ready when this prints the model name. It binds to the
+bridge address, not `0.0.0.0`, so sandboxes can reach it if their policy
+says so and nothing off the host can.
+
+```bash
 curl -s http://172.18.0.1:8018/v1/models | jq -r '.data[].id'
 ```
 
-It binds to the OpenShell bridge address, not `0.0.0.0`. Sandboxes can reach
-it if their policy says so; nothing off the host can.
-
-### 2. Add the bot
+**5. Tell swarm where it is.** Uncomment this line in `swarm.env`.
 
 ```bash
-# swarm.env
 VSS_BASE_URL=http://host.openshell.internal:8018
+```
 
+**6. Add the bot.** Installs the two tools and the skill into that one
+sandbox, applies a policy that allows egress to port 8018 on the bridge and
+nothing else, and copies the clips from `examples/videos/` to
+`/sandbox/videos`. The other bots' policies do not change; `curl` to 8018
+from the reviewer's sandbox gets a 403.
+
+```bash
 ./swarm add nemoclaw-vss
 ```
 
-`swarm` installs the plugin and skill into that one sandbox, applies
-`examples/policies/nemoclaw-vss.yaml` (egress to port 8018 on the bridge,
-nothing else), writes `VSS_BASE_URL` into the sandbox's `.env`, and copies
-the clips from `examples/videos/` to `/sandbox/videos`. The other bots'
-policies do not change; try `curl` to 8018 from the reviewer's sandbox and
-you get a 403.
-
-Test it:
+**7. Try it.**
 
 ```bash
 hermes -p nemoclaw-vss chat -q "What happens in forklift-training.mp4?"
@@ -101,20 +121,35 @@ travel inline; longer ones need a URL.
 
 ## The demo
 
-Room: reviewer, vision, vss.
+Make a group chat with `nemoclaw-reviewer`, `nemoclaw-vision`, and
+`nemoclaw-vss`. Both prompts go to the reviewer, the bot that can neither see
+nor watch, because the moment worth showing is a bot saying so and asking a
+teammate that can.
 
-1. Attach a photo, ask `@nemoclaw-reviewer what safety issues do you see?`
-   The reviewer's model can't read the image. It asks `nemoclaw-vision`
-   through `message_teammate`, relays the description with attribution, and
-   adds its own read.
-2. `@nemoclaw-vss what happens in forklift-training.mp4? Flag anything the
-   reviewer should look at.` The vss bot watches the clip and reports with
-   timestamps; the reviewer weighs in.
+**Video.** The vss bot watches the clip and answers with timestamps; the
+reviewer relays them with attribution and adds its own read. About 20 seconds.
 
-Three bots, three sandboxes, two handoffs across the boundary, no pixels in
-either handoff. That last part is deliberate: the text bots never receive
-image data they can't process, and the vision bots never receive anything
-but a question.
+```
+@nemoclaw-reviewer what happens in warehouse-ppe.mp4? Ask nemoclaw-vss, then give me your security read.
+```
+
+**Image.** Attach any photo (the paperclip in the composer), then ask. The
+reviewer's model gets the pixels but cannot read them, forwards the picture to
+the vision bot with the question, and writes its answer from what comes back.
+20 to 40 seconds.
+
+```
+@nemoclaw-reviewer what safety issues do you see in this photo?
+```
+
+Three bots, three sandboxes, two handoffs across the boundary. Only the bot
+whose model can see ever gets an image; only the bot whose policy reaches
+RT-VLM ever gets a video. Everyone else asks.
+
+We ran each of these three times in a row through the same path Desktop uses
+before writing this section, reading the tool trace in every sandbox each
+time. The traps we hit on the way, and what fixed them, are in
+[docs/troubleshooting.md](../docs/troubleshooting.md#multimodal-handoffs).
 
 ## What's here
 

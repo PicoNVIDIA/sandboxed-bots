@@ -14,7 +14,8 @@ it, the reviewer judged them without web access because its policy doesn't,
 and the handoff between them crossed a sandbox boundary.
 
 One command builds it, on a Linux host or on your Mac. The same command brings
-it back after a reboot.
+it back after a reboot. Eight commands total from a blank machine, listed
+[below](#ten-minutes-to-a-working-swarm).
 
 ```
 $ ./swarm up
@@ -107,40 +108,77 @@ Either way you need Docker, OpenShell, NemoClaw, Hermes 0.21, and an
 OpenAI-compatible model endpoint. Model serving is out of scope; the host does
 not need a GPU if the model is somewhere else.
 
-On a machine with none of that, two installers get you there. This is the
-sequence we ran on a blank Ubuntu 24.04 VM:
+Eight commands, one at a time. Each does one thing, and you can stop after
+any of them and nothing is half-built. This is the sequence we ran on a blank
+Ubuntu 24.04 VM.
+
+**1. Install NemoClaw, OpenShell, and Docker.** One installer. It stops at its
+own "configure inference provider" step because you have no NVIDIA key in it
+yet; that is fine, `swarm` brings its own endpoint.
 
 ```bash
 curl -fsSL https://nvidia.com/nemoclaw.sh | NEMOCLAW_AGENT=hermes NEMOCLAW_NON_INTERACTIVE=1 bash
+```
+
+**2. Install Hermes on the host.** Desktop talks to the bots through a thin
+Hermes profile per bot, so the host needs Hermes too.
+
+```bash
 curl -fsSL https://hermes-agent.nousresearch.com/install.sh | bash
 ```
 
-The first one installs Docker, Node, OpenShell, and NemoClaw, starts the
-OpenShell gateway, then stops at its own "configure inference provider" step
-because you have not given it an NVIDIA key. That is fine. `swarm` brings its
-own endpoint; you do not need NemoClaw's onboarding to finish. Open a new login
-shell afterwards so your user picks up the `docker` group.
+Open a new login shell here so your user picks up the `docker` group and
+`~/.local/bin` is on your PATH. On a Mac, also start Colima:
+`colima start --cpu 6 --memory 14`.
+
+**3. Get the code.**
 
 ```bash
-git clone https://github.com/NVIDIA/nemoclaw-community
-cd nemoclaw-community/examples/nemoclaw-hermes-swarm
-
-cp swarm.env.example swarm.env
-$EDITOR swarm.env                      # INFERENCE_BASE_URL and INFERENCE_MODEL (see below)
-
-umask 077; mkdir -p ~/.secrets
-printf '%s' 'your-inference-api-key' > ~/.secrets/inference.key
-
-./swarm up                             # 8 to 12 min the first time, mostly the image build
-./swarm test                           # expect: 50 passed, 0 failed
+git clone https://github.com/PicoNVIDIA/sandboxed-bots && cd sandboxed-bots/nemoclaw-hermes-swarm
 ```
 
-**Local:** on a Mac, start Colima first (`colima start --cpu 6 --memory 14`),
-then quit and reopen Hermes Desktop after `swarm up`. The bots appear under
-**This device** in the Bots pane.
+**4. Make your config.** The example already points at the NVIDIA inference
+API and a model that handles tool calls; if that is what you use, you do not
+need to edit it.
 
-**Remote:** in Desktop, **Settings → Connections → Add connection → SSH**, point
-it at the host, quit and reopen. The bots appear under that connection.
+```bash
+cp swarm.env.example swarm.env
+```
+
+**5. Store your inference key.** Prompts with echo off, saves it mode 600 in
+`~/.secrets/`, checks the endpoint accepts it. The key never appears in your
+shell history, the repo, or a sandbox you can read back.
+
+```bash
+./swarm key
+```
+
+**6. Check the host before building anything.** Docker, OpenShell, the
+endpoint, the key, disk, ports. Fix anything it flags; nothing has been
+created yet.
+
+```bash
+./swarm doctor
+```
+
+**7. Build the swarm.** 8 to 12 minutes the first time, almost all of it the
+image build. Prints one line per step and ends with a status ladder.
+
+```bash
+./swarm up
+```
+
+**8. Prove it.** 50 live checks: namespaces differ, egress is denied, the
+handoff crosses the boundary and nowhere else. Expect `50 passed, 0 failed`.
+
+```bash
+./swarm test
+```
+
+Then open Desktop. **Local:** quit and reopen Hermes Desktop; the bots appear
+under **This device** in the Bots pane. **Remote:** **Settings → Connections →
+Add connection → SSH**, point it at the host, quit and reopen; the bots appear
+under that connection.
 
 Either way, this is what you're looking for:
 
@@ -156,9 +194,19 @@ can reach; Desktop still treats them as ordinary bots.
   <img src="docs/img/new-group-chat.png" alt="New group chat dialog with Nemoclaw Researcher and Nemoclaw Reviewer ticked" width="480">
 </p>
 
-Try the prompt from the screenshot at the top. If something looks dead, restart the
-Desktop app first. Nine times out of ten the bots are fine and the client lost
-its socket.
+Two prompts to paste. The first is the screenshot at the top; the second makes
+both bots talk.
+
+```
+@nemoclaw-researcher what is NemoClaw? Check GitHub, then ask nemoclaw-reviewer what the sandbox protects and post their answer
+```
+
+```
+@nemoclaw-researcher pull the top 3 open issues on NVIDIA/NemoClaw from GitHub and post them. @nemoclaw-reviewer then pick the one with the biggest security impact and say why in two sentences.
+```
+
+If something looks dead, restart the Desktop app first. Nine times out of ten
+the bots are fine and the client lost its socket.
 
 ## Attaching a model
 

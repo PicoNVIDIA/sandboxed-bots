@@ -4,6 +4,7 @@
 #
 # swarm — run Hermes bots in NemoClaw sandboxes.
 #
+#   swarm key                store the inference key (prompts, no echo, mode 600)
 #   swarm up                 preflight, image, collector, every bot in BOTS, mesh, status
 #                            (idempotent: the same command restores a fleet after a reboot)
 #   swarm add NAME [--soul FILE | --role "text"]
@@ -38,7 +39,7 @@ _real_home=$(getent passwd "$(id -un)" 2>/dev/null | cut -d: -f6 || true)   # Li
 unset HERMES_HOME HERMES_PROFILE
 export PATH="/opt/homebrew/bin:$HOME/.local/bin:$PATH"
 
-usage() { sed -n '5,18p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; }
+usage() { sed -n '5,19p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; }
 
 # ── config ───────────────────────────────────────────────────────────────────
 ENV_FILE="${SWARM_ENV:-$SWARM_ROOT/swarm.env}"
@@ -156,6 +157,34 @@ cmd_down() {
   for b in $(bot_list); do bot_destroy "$b"; mesh_forget "$b"; done
 }
 
+# swarm key [vss]: store a secret the way preflight wants it. Prompts with echo
+# off, so the token never lands in shell history or a screen recording.
+cmd_key() {
+  local which="${1:-inference}" file
+  case "$which" in
+    inference) file="$INFERENCE_KEY_FILE" ;;
+    vss|ngc)   file="${NGC_KEY_FILE:-$HOME/.secrets/ngc.key}" ;;
+    *) die "usage: swarm key [inference|vss]" ;;
+  esac
+  local tok
+  read -r -s -p "paste your $which API key (input hidden): " tok || true; printf '\n'
+  tok=$(printf '%s' "$tok" | tr -d '[:space:]')
+  [[ -n "$tok" ]] || die "no key entered"
+  (umask 077; mkdir -p "$(dirname "$file")"; printf '%s' "$tok" > "$file")
+  chmod 600 "$file"
+  ok "saved to $file (mode 600)"
+  if [[ "$which" == inference ]]; then
+    local code
+    code=$(http_code "$INFERENCE_BASE_URL/models" -H "Authorization: Bearer $tok" 2>/dev/null | tr -dc '0-9' | tail -c 3) || true
+    case "${code:-000}" in
+      200) ok "endpoint $INFERENCE_BASE_URL accepts it" ;;
+      401|403) die "endpoint returned $code; that key is not valid for $INFERENCE_BASE_URL" ;;
+      000) warn "could not reach $INFERENCE_BASE_URL from here; swarm doctor will retry" ;;
+      *) warn "endpoint answered http $code; swarm doctor will look closer" ;;
+    esac
+  fi
+}
+
 cmd_ls()      { bot_table "${1:-}"; }
 cmd_status()  { verify_all; }
 cmd_test()    { exec "$SWARM_ROOT/tests/e2e.sh"; }
@@ -164,6 +193,7 @@ cmd_doctor()  { preflight_run; host_desktop_hint; }
 cmd_presubmit() { exec "$SWARM_ROOT/tests/presubmit.sh"; }
 
 case "${1:-}" in
+  key)     shift; cmd_key "$@" ;;
   up)      shift; cmd_up "$@" ;;
   add)     shift; cmd_add "$@" ;;
   rm)      shift; cmd_rm "$@" ;;

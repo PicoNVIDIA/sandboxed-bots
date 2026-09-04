@@ -221,6 +221,47 @@ failures with the same tool. Same task afterwards: 57 seconds, ten sources.
 It asked for confirmation on a closed stdin. Pass `--yes` when scripting or
 running over SSH.
 
+## Multimodal handoffs
+
+Everything in this section came from rehearsing the two-beat demo in
+`examples/README.md` until three passes in a row were clean. Each entry is a
+thing that looked like it worked and did not.
+
+**The vision bot says "file not found" for an image the reviewer was given.**
+The reviewer's model copied the host path from the message text and sent that.
+Paths do not cross sandboxes. Fixed in the plugin: `message_teammate` forwards
+the current turn's image parts, strips path hints from the text, and tells the
+receiver the image is attached. If you see this after updating, run `./swarm
+up`; the plugin is re-synced only when its content hash changes.
+
+**The image never reached the reviewer's sandbox at all.** The host profile
+(`hermes -p nemoclaw-reviewer`) is itself a Hermes agent. With
+`model.supports_vision` off it replaces the image with `[Image attached at:
+/tmp/...]` before forwarding. `swarm` now sets it on for every shim; whether a
+bot can see is decided by the model config inside its sandbox.
+
+**The vision bot ignores the picture and calls `vision_analyze` on a path.**
+The omni model reaches for the tool whenever a filename is in view, and the
+tool only takes a path or URL. `swarm` disables the `vision` toolset on any
+bot with `INFERENCE_VISION_<NAME>=on`; its model already sees, and the tool
+had nothing to add.
+
+**Two specialist turns for one ask, and one of them has no image.** The shim's
+title generation defaults to the "main model", which for a shim is the bot, so
+every Desktop message spawned a second full agent turn inside the sandbox.
+`swarm` turns title generation off on shims. If you see sessions created a few
+milliseconds apart in a bot's `state.db`, this is it.
+
+**The reviewer quotes a teammate that has no new session.** Probably not a
+fabrication. The api_server derives a session id from the first message, so
+an identical ask reuses the earlier session. Count turns by message timestamp,
+not by session creation.
+
+**A vision bot describes an image it was never sent.** The forwarded ask had
+a filename in it and no image. The plugin now marks those asks (`[No image is
+attached to this message...]`) and the vision soul says to answer that it was
+not given one. If you write your own vision soul, keep that line.
+
 ## Traps in your own diagnostics
 
 - `gateway.pid` holds JSON, so `ps -p $(cat gateway.pid)` reports every gateway
