@@ -62,7 +62,7 @@ What's different in practice:
 
 Every bot's tools run on your laptop. They're sandboxed, with the same
 namespaces and the same deny-by-default egress, but the machine underneath is
-the one you type on. For a demo or to learn the shape, that's fine. For a bot
+the one you type on. For a demonstration or to learn the shape, that's fine. For a bot
 that holds credentials you care about, use a remote host.
 
 Sleep pauses them. Close the lid and the sandboxes stop with the VM.

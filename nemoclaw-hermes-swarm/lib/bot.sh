@@ -155,7 +155,7 @@ _soul_teammates_section() {
   printf -- '  Ask once: one message_teammate call, then wait for the reply. Do not fire two\n  asks at the same teammate in parallel; the second one arrives without the image.\n'
   # $lines ends in a newline that heredoc substitution strips; put it back so
   # the rule that follows starts on its own line.
-  printf '\n' 
+  printf '\n'
 }
 
 _soul_runtime_section() {

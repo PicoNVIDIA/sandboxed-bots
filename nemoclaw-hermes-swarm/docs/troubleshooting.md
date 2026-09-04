@@ -43,7 +43,7 @@ instead of a bare error. A bot whose endpoint is down is not a broken bot.
 a quit client, stale backends after a gateway restart, routing that reverted.
 Every in-sandbox gateway restart invalidates the Desktop's backend, so after
 `./swarm up` on a rebooted host, restart the app too. And don't restart gateways
-five minutes before a demo. I have done this. It goes badly.
+five minutes before a demonstration. I have done this. It goes badly.
 
 ## A bot receives nothing in a group chat
 
@@ -223,7 +223,7 @@ running over SSH.
 
 ## Multimodal handoffs
 
-Everything in this section came from rehearsing the two-beat demo in
+Everything in this section came from rehearsing the two-beat demonstration in
 `examples/README.md` until three passes in a row were clean. Each entry is a
 thing that looked like it worked and did not.
 
@@ -281,7 +281,7 @@ not given one. If you write your own vision soul, keep that line.
 - Never background a remote command whose first line is destructive.
 - Never `docker rm` with a broad filter or `ancestor=`.
 - Never bind a probe to a port a working service owns. The victim exits on its
-  next restart with no obvious connection to what you changed.
+  next restart with no visible connection to what you changed.
 - `swarm` only touches sandboxes it has a key file for, profiles by those names,
   and its own collector. Other people's sandboxes on the
   same host are invisible to it.

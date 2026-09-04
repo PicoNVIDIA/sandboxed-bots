@@ -1,8 +1,8 @@
 # Two more bots: one that can see, one that can watch video
 
 The default swarm is two text-only bots. These two are what we added when a
-colleague asked whether the demo could do more than text. You don't need them.
-They're here because the way they work is the point of the whole repo, made
+colleague asked whether the example could do more than text. You don't need them.
+They're here because the way they work is the point of the whole repository, made
 visible: only one bot's model accepts images, only one bot's egress reaches
 the video model, and everyone else gets there by asking in plain language
 across a sandbox boundary.
@@ -120,7 +120,7 @@ Your own footage, three ways:
   Desktop stages the file on the host; a small host-side plugin (installed in
   every bot's shim when a vss bot exists) uploads it into the vss sandbox's
   `/sandbox/videos` before the turn is forwarded and tells the bot the name.
-  So `what happens in this clip?` with `dock-inspection.mp4` attached just
+  So `what happens in this clip?` with `dock-inspection.mp4` attached
   works, from the reviewer or anyone else. Videos only, 200 MB cap, one
   target sandbox, and the file's bytes are never read on the host.
 - **Ship it with the bot.** Put files in `examples/videos/` (or point
@@ -130,7 +130,7 @@ Your own footage, three ways:
 Clips up to about a minute and 40 MB travel to RT-VLM inline; longer ones
 need a URL.
 
-## The demo
+## The demonstration
 
 Make a group chat with `nemoclaw-reviewer`, `nemoclaw-vision`, and
 `nemoclaw-vss`. Both prompts go to the reviewer, the bot that can neither see

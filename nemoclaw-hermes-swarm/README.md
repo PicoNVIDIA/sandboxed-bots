@@ -1,17 +1,51 @@
-<p align="center">
-  <img src="docs/img/hero.png" alt="Two NemoClaw bots in a Hermes Desktop group chat: the researcher pulls live GitHub issues and hands off, the reviewer picks the security-relevant one" width="100%">
-</p>
+<!--
+  SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+  SPDX-License-Identifier: Apache-2.0
+-->
 
-# NemoClaw bots: Hermes agents you can leave running
+# Sandboxed Hermes Bot Team
+
+| Catalog field | Value |
+| --- | --- |
+| Description | Runs a team of Hermes bots, one per NemoClaw sandbox, that you talk to from Hermes Desktop as a group chat; each bot reaches only what its policy allows and hands work to teammates across the sandbox boundary. |
+| Industry | ✨ Other |
+| Requirements | Linux host or macOS with Colima · Docker · OpenShell and NemoClaw · Hermes 0.21 on the host · OpenAI-compatible inference endpoint · optional GPU for the video example |
+| NemoClaw | Unpinned |
+| Harness | Hermes 0.21.0 |
+| OpenShell | 0.0.101 |
+| Upstream | https://github.com/PicoNVIDIA/sandboxed-bots |
+
+## Screenshot
+
+![Two NemoClaw bots in a Hermes Desktop group chat: the researcher pulls live GitHub issues and hands off, the reviewer picks the security-relevant one](docs/img/hero.png)
+
+That screenshot is real. The researcher fetched today's open issues from GitHub
+because its policy lets it. The reviewer judged them without web access because
+its policy doesn't. The handoff between them crossed a sandbox boundary, and
+the reviewer named its source.
+
+## At A Glance
+
+| Question | Answer |
+| --- | --- |
+| Category | NVIDIA Recipe |
+| Contributor or provenance | NVIDIA. Developed in the [sandboxed-bots](https://github.com/PicoNVIDIA/sandboxed-bots) repository, which remains the upstream. |
+| Use this when | You want long-running Hermes agents that a team can talk to, where each agent's network reach is enforced by a sandbox policy rather than by prompt instructions. |
+| You will get | Two bots in two OpenShell sandboxes, a Hermes Desktop group chat that addresses them by name, NeMo Relay traces from each bot at one collector, a 50-check live suite, and one command that restores the fleet after a reboot. Optional examples add a bot that sees images and a bot that watches video. |
+| Runs on | A Linux host (verified on Ubuntu 24.04) or macOS with Colima (verified on macOS 26 with Colima). No GPU is required unless you run the video example. |
+| Requires | Docker, OpenShell, NemoClaw, Hermes 0.21 on the host, an OpenAI-compatible inference endpoint and its API key, and Hermes Desktop to chat. `./swarm doctor` reports what is missing. |
+| Verified on | Base team: a fresh Ubuntu 24.04 virtual machine (public installers, `./swarm up`, 50 of 50 checks, live handoff) and macOS 26 with Colima. Multimodal examples: one Linux host with an RT-VLM container on a data-center GPU, 119 of 119 checks, three consecutive passes of both handoffs. The multimodal examples have not been run from a cold start on a second machine. |
+| Evidence level | live end-to-end for the base team; integration for the multimodal examples |
+| Support and maturity | Best-effort community support. See the repository [support policy](../../../../SUPPORT.md). |
+| External access, data, and actions | Pulls the Hermes installer from `github.com` and `hermes-agent.nousresearch.com` during the image build. Sends prompts and tool output to the inference endpoint that you configure. The researcher preset allows egress to `github.com` and NVIDIA documentation hosts. Optional: exports traces to LangSmith when you provide a key, and pulls the RT-VLM image from `ghcr.io` with model weights from NGC. Creates and removes OpenShell sandboxes, Docker containers, and Hermes profiles on the host. |
+| Start here | [Ten minutes to a working swarm](#ten-minutes-to-a-working-swarm) |
+| Confirm success | [Verification](#verification) |
 
 This is a team of [Hermes](https://github.com/NousResearch/hermes-agent) bots.
 Each bot lives in its own [NVIDIA OpenShell](https://github.com/NVIDIA/OpenShell)
 sandbox managed by [NemoClaw](https://github.com/NVIDIA/NemoClaw). Each one is
 traced by [NeMo Relay](https://docs.nvidia.com/nemo/relay/). You talk to them
-from Hermes Desktop like coworkers in a group chat. That screenshot is real:
-the researcher fetched today's open issues from GitHub because its policy lets
-it, the reviewer judged them without web access because its policy doesn't,
-and the handoff between them crossed a sandbox boundary.
+from Hermes Desktop like coworkers in a group chat.
 
 One command builds it, on a Linux host or on your Mac. The same command brings
 it back after a reboot. Eight commands total from a blank machine, listed
@@ -33,9 +67,7 @@ $ ./swarm up
 The word "agent" now covers three things that behave nothing alike, and the
 third one changes what you have to build around it.
 
-<p align="center">
-  <img src="docs/img/02-session-agent-bot.svg" alt="Session vs agent vs bot" width="100%">
-</p>
+![Session vs agent vs bot](docs/img/02-session-agent-bot.png)
 
 A **session** is a chat tab: ChatGPT, Grok, a Claude conversation. It answers
 you and forgets you.
@@ -49,7 +81,7 @@ Bot Mode: a bot has a name, a role, its own memory, its own credentials, tools,
 scheduled routines, and a canonical chat that persists. Other bots can message
 it. It runs while you sleep.
 
-That last sentence is why this repo exists. A session can give you a wrong
+That last sentence is why this repository exists. A session can give you a wrong
 answer. An agent can break what you had open. A bot with your shell, your keys,
 and network access, running unattended and taking instructions from other bots,
 has a blast radius of everything it can reach, for as long as it runs. A Hermes
@@ -60,9 +92,7 @@ Each bot here runs in a NemoClaw sandbox, and the boundary is real: its own
 PID, network, and mount namespaces, a filesystem it owns, egress denied unless a
 policy says otherwise. Here are the two default bots, read live from OpenShell:
 
-<p align="center">
-  <img src="docs/img/06-two-policies.svg" alt="The researcher and reviewer sandboxes and what each can reach" width="100%">
-</p>
+![The researcher and reviewer sandboxes and what each can reach](docs/img/06-two-policies.png)
 
 The researcher can reach the model, the collector, its teammate, and a short
 list of documentation sites. The reviewer can reach the model, the collector,
@@ -85,15 +115,13 @@ nowhere else.
 
 | | Layer | What you get |
 |---|---|---|
-| ![](https://img.shields.io/badge/-Hermes-1f2937?style=flat-square) | the bot | open source (MIT) agent core; Bot Mode gives it a name, memory, a roster, and `@mention` routing in Desktop |
-| ![](https://img.shields.io/badge/-NemoClaw%20%2B%20OpenShell-76b900?style=flat-square&logoColor=black) | the boundary | one sandbox per bot; kernel namespaces; deny-by-default egress with hot-reloadable YAML policy; the inference key never leaves the sandbox's own `.env` |
-| ![](https://img.shields.io/badge/-NeMo%20Relay-76b900?style=flat-square&logoColor=black) | the record | ships inside Hermes; OpenTelemetry GenAI spans per turn, tool call, and model call, to a collector you control |
+| **Hermes** | the bot | open source (MIT) agent core; Bot Mode gives it a name, memory, a roster, and `@mention` routing in Desktop |
+| **NemoClaw + OpenShell** | the boundary | one sandbox per bot; kernel namespaces; deny-by-default egress with hot-reloadable YAML policy; the inference key never leaves the sandbox's own `.env` |
+| **NeMo Relay** | the record | ships inside Hermes; OpenTelemetry GenAI spans per turn, tool call, and model call, to a collector you control |
 
 One request, end to end:
 
-<p align="center">
-  <img src="docs/img/01-one-request.svg" alt="One request through Hermes Desktop, a NemoClaw sandbox, and NeMo Relay" width="100%">
-</p>
+![One request through Hermes Desktop, a NemoClaw sandbox, and NeMo Relay](docs/img/01-one-request.png)
 
 ## Ten minutes to a working swarm
 
@@ -147,7 +175,7 @@ cp swarm.env.example swarm.env
 
 **5. Store your inference key.** Prompts with echo off, saves it mode 600 in
 `~/.secrets/`, checks the endpoint accepts it. The key never appears in your
-shell history, the repo, or a sandbox you can read back.
+shell history, the repository, or a sandbox you can read back.
 
 ```bash
 ./swarm key
@@ -182,17 +210,13 @@ under that connection.
 
 Either way, this is what you're looking for:
 
-<p align="center">
-  <img src="docs/img/roster.png" alt="Nemoclaw Researcher and Nemoclaw Reviewer in the Hermes Desktop Bots roster" width="420">
-</p>
+![Nemoclaw Researcher and Nemoclaw Reviewer in the Hermes Desktop Bots roster](docs/img/roster.png)
 
 Then **Bots → + → New group chat**, tick both, create. They sit in the picker
 next to your other bots and any remote connection. The sandbox limits what they
 can reach; Desktop still treats them as ordinary bots.
 
-<p align="center">
-  <img src="docs/img/new-group-chat.png" alt="New group chat dialog with Nemoclaw Researcher and Nemoclaw Reviewer ticked" width="480">
-</p>
+![New group chat dialog with Nemoclaw Researcher and Nemoclaw Reviewer ticked](docs/img/new-group-chat.png)
 
 Two prompts to paste. The first is the screenshot at the top; the second makes
 both bots talk.
@@ -221,7 +245,7 @@ INFERENCE_KEY_FILE=$HOME/.secrets/inference.key           # mode 600, read by sw
 
 What happens to the key: `swarm` reads it from that file on the host and writes
 it into each sandbox's own `/sandbox/.hermes/.env`. It never appears in a
-policy, a log, the repo, or another bot's sandbox. The egress policy is derived
+policy, a log, the repository, or another bot's sandbox. The egress policy is derived
 from the URL, so the bot can reach exactly that host and port and nothing else.
 
 Tested endpoints: the NVIDIA inference API (above), and local vLLM on the same
@@ -240,9 +264,7 @@ different *host* also needs a rebuild of the bots so the policy allows it; see
 
 ## What a handoff looks like
 
-<p align="center">
-  <img src="docs/img/04-handoff.svg" alt="A handoff between two sandboxed bots" width="100%">
-</p>
+![A handoff between two sandboxed bots](docs/img/04-handoff.png)
 
 You type once. The room routes to the bot you mentioned. That bot does the work
 inside its sandbox, decides the reviewer should see it, and calls
@@ -275,6 +297,63 @@ Only ever add. `openshell policy set` replaces the whole policy and drops the
 model and peer rules. Details and the traps in
 [docs/customizing.md](docs/customizing.md#the-policy).
 
+## Verification
+
+**Evidence level:** live end-to-end for the base team; integration for the
+multimodal examples.
+
+Run the suite from the host after `./swarm up`:
+
+```bash
+./swarm test
+```
+
+**Expected result:**
+
+```text
+  SUMMARY: 50 passed, 0 failed
+```
+
+With the optional vision and video bots added, the suite grows to 119 checks
+and the last section proves the policy difference live: the researcher gets an
+HTTP 403 from the video model's endpoint and the video bot gets a 200.
+
+**This verifies:** each bot runs in its own sandbox (different hostnames and PID
+namespaces), egress to an unlisted host is refused inside every sandbox, each
+bot answers through its own API port with its own key, a message from one bot
+reaches a teammate and the reply comes back, the host profiles route to the
+right sandboxes, and the collector receives spans from every bot.
+
+**This does not verify:** the quality of any model's answer, Hermes Desktop's
+rendering of the group chat (verify that by eye with the prompts in
+[What a handoff looks like](#what-a-handoff-looks-like)), or the RT-VLM
+container's cold start on a machine that has not run it before.
+
+For the multimodal examples, the same prompts were run three times in a row
+through the host profiles that Desktop uses, and the tool trace in every
+sandbox was read each time. The traps found on the way are in
+[docs/troubleshooting.md](docs/troubleshooting.md#multimodal-handoffs).
+
+## Teardown
+
+```bash
+./swarm down --yes
+```
+
+This removes every bot in `BOTS`: its sandbox, its host profile and gateway,
+its API key, and its policy file under `SWARM_STATE`. It does not remove the
+sandbox image, the tracing collector container, `swarm.env`, or the inference
+key file in `~/.secrets/`. To remove those as well:
+
+```bash
+docker rm -f swarm-otel
+docker rmi hermes-bot:v2026.8.31
+rm -rf ~/.swarm
+```
+
+Bots added with `swarm add` outside `BOTS` need `./swarm rm NAME --yes` each.
+The optional RT-VLM container is separate: `docker compose -f examples/vss/compose.yml down`.
+
 ## Let your own agent run this
 
 `skill/SKILL.md` is a Hermes skill. Give it to your agent and it can stand up,
@@ -293,7 +372,7 @@ in the skill.
 
 ## Going multimodal
 
-The defaults are text-only on purpose. When a colleague asked whether the demo
+The defaults are text-only on purpose. When a colleague asked whether the example
 could do more than text, we added two bots under [`examples/`](examples/) and
 left them optional: `nemoclaw-vision`, whose model accepts images, and
 `nemoclaw-vss`, which watches video through NVIDIA RT-VLM from the

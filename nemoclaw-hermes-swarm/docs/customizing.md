@@ -73,7 +73,7 @@ line. Three failed attempts with the same tool means the path is closed.
 ## The policy
 
 <p align="center">
-  <img src="img/06-two-policies.svg" alt="Researcher and reviewer policies side by side" width="100%">
+  <img src="img/06-two-policies.png" alt="Researcher and reviewer policies side by side" width="100%">
 </p>
 
 Every bot starts from `policies/bot.template.yaml`: a read-only system, a
@@ -142,7 +142,7 @@ INFERENCE_MAX_TOKENS=8192
 
 The key is read from `INFERENCE_KEY_FILE` (default `~/.secrets/inference.key`,
 mode 600) and written into each sandbox's `.env`. It never appears in a policy,
-a log, or this repo.
+a log, or this repository.
 
 Anything OpenAI-compatible works: NVIDIA NIM, a hosted API, vLLM, SGLang. We
 verified against a hosted Nemotron 3 Super endpoint. Two things to check when

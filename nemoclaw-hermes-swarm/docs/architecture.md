@@ -6,7 +6,7 @@ over HTTP but is invisible in Desktop) looks like anything but a gateway problem
 
 ## One request
 
-<p align="center"><img src="img/01-one-request.svg" alt="One request through Desktop, the host gateway, the sandbox, and Relay" width="100%"></p>
+<p align="center"><img src="img/01-one-request.png" alt="One request through Desktop, the host gateway, the sandbox, and Relay" width="100%"></p>
 
 You type `@nemoclaw-researcher …` in a Desktop room. Desktop is connected to the
 host over SSH. On the host there's a thin Hermes profile for each bot whose only
@@ -22,7 +22,7 @@ policy. `./swarm test` checks this the blunt way: it asks a bot to run
 
 ## Inside a sandbox
 
-<p align="center"><img src="img/03-inside-a-sandbox.svg" alt="What a sandbox can see and reach" width="100%"></p>
+<p align="center"><img src="img/03-inside-a-sandbox.png" alt="What a sandbox can see and reach" width="100%"></p>
 
 An OpenShell sandbox is a container with its own PID, network, mount, and IPC
 namespaces, a Landlock-restricted filesystem, and an egress proxy that denies
@@ -77,7 +77,7 @@ That one trick is what makes `hermes -p nemoclaw-researcher chat` and a Desktop
 
 ## A handoff
 
-<p align="center"><img src="img/04-handoff.svg" alt="A handoff between two sandboxed bots" width="100%"></p>
+<p align="center"><img src="img/04-handoff.png" alt="A handoff between two sandboxed bots" width="100%"></p>
 
 Three things let a message cross from one sandbox to another, and `./swarm add`
 sets up all three, both directions, for every pair:
@@ -95,7 +95,7 @@ with no Desktop attached.
 
 ## Tracing
 
-<p align="center"><img src="img/05-relay-trace.svg" alt="Relay spans from sandbox to collector" width="100%"></p>
+<p align="center"><img src="img/05-relay-trace.png" alt="Relay spans from sandbox to collector" width="100%"></p>
 
 Relay is part of Hermes; there's nothing to install. `./swarm up` writes one
 `relay-plugins.toml` per bot, points Hermes at it, allows egress to the

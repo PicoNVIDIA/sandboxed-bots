@@ -66,7 +66,7 @@ For their own machine there is nothing to add.
 600 seconds. New bots share the inference endpoint; there is no model load. If
 a tool call still times out mid-`add`, do not conclude failure: run
 `./swarm ls` and `./swarm status` and read the result. Re-running `add` for the
-same name is safe.
+same name does not change anything.
 
 `./swarm` fixes its own environment (real `HOME` from the passwd database,
 `HERMES_HOME`/`HERMES_PROFILE` cleared, `~/.local/bin` on `PATH`), so it works
@@ -121,7 +121,7 @@ In this order. Stop at the first failure.
    200, a chat turn through the sandbox, relay active, host profile running.
 5. **Restart the Desktop app.** Every in-sandbox gateway restart invalidates
    the Desktop's backend, so `swarm up` after a reboot means the user restarts
-   the app too. Never restart gateways right before a demo.
+   the app too. Never restart gateways right before a demonstration.
 
 ## Failures that look like something else
 

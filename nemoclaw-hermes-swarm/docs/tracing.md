@@ -5,7 +5,7 @@ gives you one: a span for every turn, every model call, every tool call, with
 inputs, outputs and token counts, tagged by bot. Relay ships inside Hermes, so
 this is a config file per bot and nothing to install. `./swarm up` turns it on.
 
-<p align="center"><img src="img/05-relay-trace.svg" alt="Relay spans from the sandbox to a collector" width="100%"></p>
+<p align="center"><img src="img/05-relay-trace.png" alt="Relay spans from the sandbox to a collector" width="100%"></p>
 
 ## Why I bother
 
@@ -68,7 +68,7 @@ Relay fails open. A missing or malformed `relay-plugins.toml` logs one
 warning and carries on with tracing off. You get a perfectly healthy bot that
 exports nothing. Never assume it activated; read the counters.
 
-The env var is read once, at process start. Write the TOML or the variable
+The environment variable is read once, at process start. Write the TOML or the variable
 while the gateway is running and nothing happens. `swarm` restarts the gateway
 every time it touches either.
 
