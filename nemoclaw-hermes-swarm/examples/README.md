@@ -114,10 +114,21 @@ from the reviewer's sandbox gets a 403.
 hermes -p nemoclaw-vss chat -q "What happens in forklift-training.mp4?"
 ```
 
-Your own footage: drop files into `examples/videos/` (or point
-`VSS_VIDEOS_DIR` elsewhere) before `swarm add`, or give the bot an `http(s)`
-URL the RT-VLM container can fetch. Clips up to about a minute and 40 MB
-travel inline; longer ones need a URL.
+Your own footage, three ways:
+
+- **Drop it in the chat.** Drag a clip into any bot's Desktop chat and ask.
+  Desktop stages the file on the host; a small host-side plugin (installed in
+  every bot's shim when a vss bot exists) uploads it into the vss sandbox's
+  `/sandbox/videos` before the turn is forwarded and tells the bot the name.
+  So `what happens in this clip?` with `dock-inspection.mp4` attached just
+  works, from the reviewer or anyone else. Videos only, 200 MB cap, one
+  target sandbox, and the file's bytes are never read on the host.
+- **Ship it with the bot.** Put files in `examples/videos/` (or point
+  `VSS_VIDEOS_DIR` elsewhere) and run `./swarm up`.
+- **Link it.** Give the bot an `http(s)` URL the RT-VLM container can fetch.
+
+Clips up to about a minute and 40 MB travel to RT-VLM inline; longer ones
+need a URL.
 
 ## The demo
 
@@ -140,6 +151,14 @@ the vision bot with the question, and writes its answer from what comes back.
 
 ```
 @nemoclaw-reviewer what safety issues do you see in this photo?
+```
+
+**Your own video.** Drag a clip into the chat, then ask. The clip lands in the
+vss sandbox before anyone reads the message; the reviewer asks vss about it by
+name. Same 20 seconds plus the upload.
+
+```
+@nemoclaw-reviewer what happens in this clip?
 ```
 
 Three bots, three sandboxes, two handoffs across the boundary. Only the bot

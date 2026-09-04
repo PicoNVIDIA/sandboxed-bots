@@ -44,10 +44,41 @@ host_profile_ensure() {
   sed_delete '^SANDBOX_API_KEY=' "$envf"
   printf 'SANDBOX_API_KEY=%s\n' "$key" >> "$envf"
   [[ -n "$soul" && -f "$soul" ]] && cp "$soul" "$HOME/.hermes/profiles/$name/SOUL.md"
+  host_dropbox_ensure "$name"
   ok "host profile $name -> $HOST_API_ADDR:$port"
 
   if [[ "$HOST_GATEWAY" == on ]]; then
     host_gateway_start "$name"
+  fi
+}
+
+# Dropped videos. Desktop attaches a dropped file as @file:/host/path, which
+# means nothing in a sandbox. The dropbox plugin, installed in every host shim
+# when a vss bot is in the fleet, uploads the clip into that bot's
+# /sandbox/videos before the turn is forwarded and tells the bot the name.
+# Host code, host tool (openshell sandbox upload), one target, videos only.
+# Content-hashed like the sandbox plugins; removed when no vss bot exists.
+host_dropbox_ensure() {
+  local name="$1" vss="" b pdir dst envf want have
+  for b in $(bot_list); do [[ "$(bot_short "$b")" == vss ]] && vss=$(sandbox_of "$b"); done
+  pdir="$HOME/.hermes/profiles/$name/plugins"; dst="$pdir/dropbox"
+  envf="$HOME/.hermes/profiles/$name/.env"
+  sed_delete '^SWARM_VSS_SANDBOX=' "$envf"
+  if [[ -z "$vss" || "$(bot_short "$name")" == vss ]]; then
+    rm -rf "$dst"; return 0
+  fi
+  printf 'SWARM_VSS_SANDBOX=%s\n' "$vss" >> "$envf"
+  want=$(cat "$SWARM_ROOT/plugins/dropbox/plugin.yaml" "$SWARM_ROOT/plugins/dropbox/__init__.py" > /tmp/dropbox.$$ && sha16 /tmp/dropbox.$$; rm -f /tmp/dropbox.$$)
+  have=$(cat "$dst/.hash" 2>/dev/null || true)
+  if [[ "$want" != "$have" ]]; then
+    mkdir -p "$pdir"; rm -rf "$dst"; cp -R "$SWARM_ROOT/plugins/dropbox" "$dst"
+    printf '%s' "$want" > "$dst/.hash"
+    hermes -p "$name" plugins enable dropbox >/dev/null 2>&1 || true
+    dim "dropbox plugin -> $name (videos land in $vss:/sandbox/videos)"
+    # A running host gateway loaded plugins at start; cycle it so this lands.
+    if [[ "$(host_profile_state "$name")" == running ]]; then
+      host_gateway_stop "$name"; host_gateway_start "$name"
+    fi
   fi
 }
 

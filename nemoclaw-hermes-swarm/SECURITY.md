@@ -54,6 +54,16 @@ The host user owns everything. `swarm` runs as the user who owns
 `~/.hermes`. That user can read every key, every sandbox, and the collector.
 This is an operator tool, not a multi-tenant one.
 
+A dropped video is written into one sandbox. When a vss bot exists, each
+bot's host shim carries a plugin that copies a video the user drops into
+Desktop into the vss sandbox's `/sandbox/videos`, using the same
+`openshell sandbox upload` that ships the example clips. It is host code
+acting on the host user's file, so it adds no capability the host user did not
+already have. It is bounded anyway: video extensions only, 200 MB, one target
+directory, filename sanitized, and it never reads the file's contents. The
+shim's other tools cannot call it; it runs only on a message that carries a
+video attachment. It is not installed when no vss bot exists.
+
 Desktop reaches the host over SSH. Whoever has that SSH key can talk to every
 bot. The bots do not authenticate Desktop users separately.
 
