@@ -7,7 +7,7 @@ this is a config file per bot and nothing to install. `./swarm up` turns it on.
 
 <p align="center"><img src="img/05-relay-trace.png" alt="Relay spans from the sandbox to a collector" width="100%"></p>
 
-## Why I bother
+## What a trace catches
 
 Four things went wrong while we built this, and a trace exposes each one in
 about a second:

@@ -7,7 +7,7 @@
 
 | Catalog field | Value |
 | --- | --- |
-| Description | Runs a team of Hermes bots, one per NemoClaw sandbox, that you talk to from Hermes Desktop as a group chat; each bot reaches only what its policy allows and hands work to teammates across the sandbox boundary. |
+| Description | A team of Hermes bots you talk to from Hermes Desktop, one NemoClaw sandbox each. A bot reaches only what its policy names, and when it needs something it cannot reach, it asks a teammate. |
 | Industry | ✨ Other |
 | Requirements | Linux host or macOS with Colima · Docker · OpenShell and NemoClaw · Hermes 0.21 on the host · OpenAI-compatible inference endpoint · optional GPU for the video example |
 | NemoClaw | Unpinned |
@@ -19,25 +19,25 @@
 
 ![Two NemoClaw bots in a Hermes Desktop group chat: the researcher pulls live GitHub issues and hands off, the reviewer picks the security-relevant one](docs/img/hero.png)
 
-That screenshot is real. The researcher fetched today's open issues from GitHub
-because its policy lets it. The reviewer judged them without web access because
-its policy doesn't. The handoff between them crossed a sandbox boundary, and
-the reviewer named its source.
+That screenshot is real. The researcher pulled the day's open issues because its
+policy lets it reach GitHub. The reviewer has no web access at all, so it worked
+from what the researcher handed over and said so. Two sandboxes, one boundary
+crossed, and you can see where.
 
 ## At A Glance
 
 | Question | Answer |
 | --- | --- |
 | Category | NVIDIA Recipe |
-| Contributor or provenance | NVIDIA. Developed in the [sandboxed-bots](https://github.com/PicoNVIDIA/sandboxed-bots) repository, which remains the upstream. |
-| Use this when | You want long-running Hermes agents that a team can talk to, where each agent's network reach is enforced by a sandbox policy rather than by prompt instructions. |
-| You will get | Two bots in two OpenShell sandboxes, a Hermes Desktop group chat that addresses them by name, NeMo Relay traces from each bot at one collector, a 50-check live suite, and one command that restores the fleet after a reboot. Optional examples add a bot that sees images and a bot that watches video. |
-| Runs on | A Linux host (verified on Ubuntu 24.04) or macOS with Colima (verified on macOS 26 with Colima). No GPU is required unless you run the video example. |
-| Requires | Docker, OpenShell, NemoClaw, Hermes 0.21 on the host, an OpenAI-compatible inference endpoint and its API key, and Hermes Desktop to chat. `./swarm doctor` reports what is missing. |
-| Verified on | Base team: a fresh Ubuntu 24.04 virtual machine (public installers, `./swarm up`, 50 of 50 checks, live handoff) and macOS 26 with Colima. Multimodal examples: one Linux host with an RT-VLM container on a data-center GPU, 119 of 119 checks, three consecutive passes of both handoffs. The multimodal examples have not been run from a cold start on a second machine. |
+| Contributor or provenance | NVIDIA. Developed in [sandboxed-bots](https://github.com/PicoNVIDIA/sandboxed-bots), which stays the upstream. |
+| Use this when | You want agents that stay running, that several people can talk to, and whose network reach is decided by a sandbox policy instead of a line in a prompt. |
+| You will get | Two bots in two sandboxes, a Desktop group chat that knows them by name, a trace of every turn at one collector, and a 50-check suite. The same `swarm up` brings it all back after a reboot. Two optional bots add images and video. |
+| Runs on | A Linux host, or a Mac with Colima. No GPU unless you run the video example. |
+| Requires | Docker, OpenShell, NemoClaw, and Hermes 0.21 on the host, plus an OpenAI-compatible endpoint and a key for it. `./swarm doctor` tells you what is missing before anything is built. |
+| Verified on | The base team on a fresh Ubuntu 24.04 VM from the public installers (50 of 50 checks, live handoff) and on macOS 26 with Colima. The image and video bots on one Linux host with an RT-VLM container on a data-center GPU: 119 of 119 checks, both handoffs three times in a row. Nobody has yet stood the multimodal examples up cold on a second machine. |
 | Evidence level | live end-to-end for the base team; integration for the multimodal examples |
-| Support and maturity | Best-effort community support. See the repository [support policy](../../../../SUPPORT.md). |
-| External access, data, and actions | Pulls the Hermes installer from `github.com` and `hermes-agent.nousresearch.com` during the image build. Sends prompts and tool output to the inference endpoint that you configure. The researcher preset allows egress to `github.com` and NVIDIA documentation hosts. Optional: exports traces to LangSmith when you provide a key, and pulls the RT-VLM image from `ghcr.io` with model weights from NGC. Creates and removes OpenShell sandboxes, Docker containers, and Hermes profiles on the host. |
+| Support and maturity | Best-effort community support under the repository [support policy](../../../../SUPPORT.md). |
+| External access, data, and actions | The image build fetches Hermes from `github.com` and `hermes-agent.nousresearch.com`. Prompts and tool output go to whatever inference endpoint you configure. The researcher preset opens `github.com` and NVIDIA documentation hosts; the reviewer opens nothing. If you give it a LangSmith key, traces go there too. The video example pulls RT-VLM from `ghcr.io` and its weights from NGC. On the host it creates and removes sandboxes, containers, and Hermes profiles. |
 | Start here | [Ten minutes to a working swarm](#ten-minutes-to-a-working-swarm) |
 | Confirm success | [Verification](#verification) |
 
@@ -302,7 +302,7 @@ model and peer rules. Details and the traps in
 **Evidence level:** live end-to-end for the base team; integration for the
 multimodal examples.
 
-Run the suite from the host after `./swarm up`:
+After `./swarm up`, run the suite from the host:
 
 ```bash
 ./swarm test
@@ -314,24 +314,29 @@ Run the suite from the host after `./swarm up`:
   SUMMARY: 50 passed, 0 failed
 ```
 
-With the optional vision and video bots added, the suite grows to 119 checks
-and the last section proves the policy difference live: the researcher gets an
-HTTP 403 from the video model's endpoint and the video bot gets a 200.
+Add the vision and video bots and it grows to 119. The last section is the one
+worth watching: the researcher asks the video model's endpoint for a model list
+and gets a 403, and the video bot asks the same thing and gets a 200. The
+difference is which sandbox the request came from.
 
-**This verifies:** each bot runs in its own sandbox (different hostnames and PID
-namespaces), egress to an unlisted host is refused inside every sandbox, each
-bot answers through its own API port with its own key, a message from one bot
-reaches a teammate and the reply comes back, the host profiles route to the
-right sandboxes, and the collector receives spans from every bot.
+**This verifies:** the checks are live probes, not config reads. They confirm
+that the two bots have different hostnames and PID namespaces, that a request to
+a host not in the policy is refused from inside each sandbox, that each bot
+answers on its own port with its own key, that a message sent from one bot
+arrives at the other and the reply comes back, and that the collector has spans
+from every bot.
 
-**This does not verify:** the quality of any model's answer, Hermes Desktop's
-rendering of the group chat (verify that by eye with the prompts in
-[What a handoff looks like](#what-a-handoff-looks-like)), or the RT-VLM
-container's cold start on a machine that has not run it before.
+**This does not verify:** whether any model gave a good answer. The suite asks
+for exact strings on purpose. It also does not exercise Hermes Desktop itself;
+for that, open the group chat and use the prompts in
+[What a handoff looks like](#what-a-handoff-looks-like). And it has never
+started the RT-VLM container on a machine that had not already pulled the
+weights.
 
-For the multimodal examples, the same prompts were run three times in a row
-through the host profiles that Desktop uses, and the tool trace in every
-sandbox was read each time. The traps found on the way are in
+For the image and video handoffs we did something the suite cannot: ran the
+demonstration prompts three times in a row through the same host profiles
+Desktop uses, then read the tool trace inside every sandbox after each pass.
+That found six bugs the suite did not. They are written up in
 [docs/troubleshooting.md](docs/troubleshooting.md#multimodal-handoffs).
 
 ## Teardown
@@ -340,10 +345,10 @@ sandbox was read each time. The traps found on the way are in
 ./swarm down --yes
 ```
 
-This removes every bot in `BOTS`: its sandbox, its host profile and gateway,
-its API key, and its policy file under `SWARM_STATE`. It does not remove the
-sandbox image, the tracing collector container, `swarm.env`, or the inference
-key file in `~/.secrets/`. To remove those as well:
+That takes down every bot in `BOTS`, sandbox and host profile and key. It
+leaves the sandbox image, the collector container, your `swarm.env`, and the
+inference key in `~/.secrets/` alone, because you will probably want them next
+time. If you want a clean host:
 
 ```bash
 docker rm -f swarm-otel
@@ -351,8 +356,9 @@ docker rmi hermes-bot:v2026.8.31
 rm -rf ~/.swarm
 ```
 
-Bots added with `swarm add` outside `BOTS` need `./swarm rm NAME --yes` each.
-The optional RT-VLM container is separate: `docker compose -f examples/vss/compose.yml down`.
+A bot you added with `swarm add` is not in `BOTS`, so it needs its own
+`./swarm rm NAME --yes`. The RT-VLM container is separate from all of this:
+`docker compose -f examples/vss/compose.yml down`.
 
 ## Let your own agent run this
 
