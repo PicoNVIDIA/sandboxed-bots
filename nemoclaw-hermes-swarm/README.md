@@ -19,25 +19,25 @@
 
 ![Two NemoClaw bots in a Hermes Desktop group chat: the researcher pulls live GitHub issues and hands off, the reviewer picks the security-relevant one](docs/img/hero.png)
 
-That screenshot is real. The researcher pulled the day's open issues because its
-policy lets it reach GitHub. The reviewer has no web access at all, so it worked
-from what the researcher handed over and said so. Two sandboxes, one boundary
-crossed, and you can see where.
+The screenshot is unedited. The researcher pulled the day's open issues because
+its policy lets it reach GitHub. The reviewer has no web access, so it worked
+from what the researcher handed over and named that source in its answer. The
+handoff between them crossed a sandbox boundary.
 
 ## At A Glance
 
 | Question | Answer |
 | --- | --- |
 | Category | NVIDIA Recipe |
-| Contributor or provenance | NVIDIA. Developed in [sandboxed-bots](https://github.com/PicoNVIDIA/sandboxed-bots), which stays the upstream. |
-| Use this when | You want agents that stay running, that several people can talk to, and whose network reach is decided by a sandbox policy instead of a line in a prompt. |
-| You will get | Two bots in two sandboxes, a Desktop group chat that knows them by name, a trace of every turn at one collector, and a 50-check suite. The same `swarm up` brings it all back after a reboot. Two optional bots add images and video. |
-| Runs on | A Linux host, or a Mac with Colima. No GPU unless you run the video example. |
-| Requires | Docker, OpenShell, NemoClaw, and Hermes 0.21 on the host, plus an OpenAI-compatible endpoint and a key for it. `./swarm doctor` tells you what is missing before anything is built. |
-| Verified on | The base team on a fresh Ubuntu 24.04 VM from the public installers (50 of 50 checks, live handoff) and on macOS 26 with Colima. The image and video bots on one Linux host with an RT-VLM container on a data-center GPU: 119 of 119 checks, both handoffs three times in a row. Nobody has yet stood the multimodal examples up cold on a second machine. |
+| Contributor or provenance | NVIDIA. Developed in [sandboxed-bots](https://github.com/PicoNVIDIA/sandboxed-bots), which remains the upstream repository. |
+| Use this when | You want Hermes agents that keep running, that several people can address from one group chat, and whose network reach is set by a sandbox policy rather than by prompt instructions. |
+| You will get | Two bots in two sandboxes, a Hermes Desktop group chat that addresses them by name, NeMo Relay traces from every turn at one collector, and a 50-check live suite. The same `swarm up` restores the fleet after a reboot. Two optional bots add image and video input. |
+| Runs on | A Linux host, or macOS with Colima. No GPU is needed unless you run the video example. |
+| Requires | Docker, OpenShell, NemoClaw, and Hermes 0.21 on the host, plus an OpenAI-compatible inference endpoint and its API key. `./swarm doctor` reports what is missing before anything is built. |
+| Verified on | The base team on a fresh Ubuntu 24.04 VM from the public installers (50 of 50 checks, live handoff) and on macOS 26 with Colima. The image and video bots on one Linux host with an RT-VLM container on a data-center GPU: 119 of 119 checks, both handoffs three times in a row. The multimodal examples have not yet been set up from scratch on a second machine. |
 | Evidence level | live end-to-end for the base team; integration for the multimodal examples |
 | Support and maturity | Best-effort community support under the repository [support policy](../../../../SUPPORT.md). |
-| External access, data, and actions | The image build fetches Hermes from `github.com` and `hermes-agent.nousresearch.com`. Prompts and tool output go to whatever inference endpoint you configure. The researcher preset opens `github.com` and NVIDIA documentation hosts; the reviewer opens nothing. If you give it a LangSmith key, traces go there too. The video example pulls RT-VLM from `ghcr.io` and its weights from NGC. On the host it creates and removes sandboxes, containers, and Hermes profiles. |
+| External access, data, and actions | The image build fetches Hermes from `github.com` and `hermes-agent.nousresearch.com`. Prompts and tool output go to the inference endpoint you configure. The researcher preset allows egress to `github.com` and NVIDIA documentation hosts; the reviewer preset allows none. With a LangSmith key, traces are also exported there. The video example pulls RT-VLM from `ghcr.io` and its weights from NGC. On the host, `swarm` creates and removes sandboxes, containers, and Hermes profiles. |
 | Start here | [Ten minutes to a working swarm](#ten-minutes-to-a-working-swarm) |
 | Confirm success | [Verification](#verification) |
 
@@ -314,29 +314,29 @@ After `./swarm up`, run the suite from the host:
   SUMMARY: 50 passed, 0 failed
 ```
 
-Add the vision and video bots and it grows to 119. The last section is the one
-worth watching: the researcher asks the video model's endpoint for a model list
-and gets a 403, and the video bot asks the same thing and gets a 200. The
-difference is which sandbox the request came from.
+With the vision and video bots added, the suite has 119 checks. The last
+section shows the policy at work: the researcher requests the video model's
+`/v1/models` and gets a 403; the video bot makes the same request and gets a
+200. The only difference is which sandbox the request came from.
 
-**This verifies:** the checks are live probes, not config reads. They confirm
-that the two bots have different hostnames and PID namespaces, that a request to
-a host not in the policy is refused from inside each sandbox, that each bot
-answers on its own port with its own key, that a message sent from one bot
-arrives at the other and the reply comes back, and that the collector has spans
-from every bot.
+**This verifies:** that the two bots have different hostnames and PID
+namespaces, that a request to a host outside the policy is refused from inside
+each sandbox, that each bot answers on its own port with its own key, that a
+message sent from one bot arrives at the other and the reply comes back, and
+that the collector holds spans from every bot. Every check is a live probe, not
+a read of a config file.
 
-**This does not verify:** whether any model gave a good answer. The suite asks
-for exact strings on purpose. It also does not exercise Hermes Desktop itself;
-for that, open the group chat and use the prompts in
-[What a handoff looks like](#what-a-handoff-looks-like). And it has never
-started the RT-VLM container on a machine that had not already pulled the
-weights.
+**This does not verify:** the quality of any model's answer; the suite asks
+for exact strings on purpose. It does not exercise Hermes Desktop itself. For
+that, open the group chat and use the prompts in
+[What a handoff looks like](#what-a-handoff-looks-like). It also does not
+cover a cold start of the RT-VLM container on a machine that has not already
+pulled the weights.
 
-For the image and video handoffs we did something the suite cannot: ran the
-demonstration prompts three times in a row through the same host profiles
-Desktop uses, then read the tool trace inside every sandbox after each pass.
-That found six bugs the suite did not. They are written up in
+The image and video handoffs were also rehearsed by hand: the demonstration
+prompts were run three times in a row through the same host profiles Desktop
+uses, and the tool trace inside every sandbox was read after each pass. That
+found six problems the suite did not, written up in
 [docs/troubleshooting.md](docs/troubleshooting.md#multimodal-handoffs).
 
 ## Teardown
@@ -345,10 +345,10 @@ That found six bugs the suite did not. They are written up in
 ./swarm down --yes
 ```
 
-That takes down every bot in `BOTS`, sandbox and host profile and key. It
-leaves the sandbox image, the collector container, your `swarm.env`, and the
-inference key in `~/.secrets/` alone, because you will probably want them next
-time. If you want a clean host:
+This removes every bot in `BOTS`: the sandbox, the host profile and its
+gateway, and the key. It keeps the sandbox image, the collector container,
+`swarm.env`, and the inference key in `~/.secrets/`, since the next `swarm up`
+needs them. For a clean host:
 
 ```bash
 docker rm -f swarm-otel
@@ -356,8 +356,8 @@ docker rmi hermes-bot:v2026.8.31
 rm -rf ~/.swarm
 ```
 
-A bot you added with `swarm add` is not in `BOTS`, so it needs its own
-`./swarm rm NAME --yes`. The RT-VLM container is separate from all of this:
+A bot added with `swarm add` is not in `BOTS` and needs its own
+`./swarm rm NAME --yes`. The RT-VLM container is managed separately:
 `docker compose -f examples/vss/compose.yml down`.
 
 ## Let your own agent run this
