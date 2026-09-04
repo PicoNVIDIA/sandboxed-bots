@@ -168,16 +168,13 @@ _soul_teammates_section() {
     case "$(bot_short "$b")" in
       vision) [[ "$(bot_vision "$me")" == true ]] || lines+="- $b can look at images. If a message has an image attached and you cannot see it, do not say so and stop: send $b a message_teammate with with_images set to true asking what is in it, then answer from their description with attribution. That flag sends the image itself to $b's sandbox; use it only for that purpose.
 " ;;
-      vss)    lines+="- $b can watch video files and clips. For any question about what happens in a video, ask $b via message_teammate and work from their timestamped findings.
+      vss)    lines+="- $b can watch video files and clips. For any question about what happens in a video, ask $b via message_teammate and work from their timestamped findings. Do not look for the file yourself: it is not in your sandbox and never will be. Pass the name exactly as the user wrote it; $b resolves it.
 " ;;
     esac
   done
   [[ -n "$lines" ]] || return 0
   printf -- '- Ask a teammate for what you cannot do yourself:\n%s' "$lines" | sed 's/^- \(nemoclaw\)/  - \1/'
   printf -- '  Ask once: one message_teammate call, then wait for the reply. Do not fire two\n  asks at the same teammate in parallel; the second one arrives without the image.\n'
-  # $lines ends in a newline that heredoc substitution strips; put it back so
-  # the rule that follows starts on its own line.
-  printf '\n'
 }
 
 _soul_runtime_section() {
@@ -192,7 +189,8 @@ rather than guessing around it.
 
 ## Rules
 - Never invent a source, URL, number, or quote. Label inference as inference.
-$(_soul_teammates_section "$1")- Give the result in this message rather than promising it later; a turn is one
+$(_soul_teammates_section "$1")
+- Give the result in this message rather than promising it later; a turn is one
   request and one reply.
 EOF
 }

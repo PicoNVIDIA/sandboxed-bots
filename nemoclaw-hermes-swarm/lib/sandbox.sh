@@ -48,7 +48,7 @@ sandbox_adopt_legacy() {
   port=$(bot_port "$name" 2>/dev/null) || return 1
   [[ -s "$(bot_key_file "$name")" ]] || return 1
   key=$(read_secret "$(bot_key_file "$name")")
-  code=$(http_code "http://$HOST_API_ADDR:$port/v1/models" -H "Authorization: Bearer ***")
+  code=$(http_code "http://$HOST_API_ADDR:$port/v1/models" -H "Authorization: Bearer $key")
   [[ "$code" == 200 ]] || return 1
   _sandbox_mark_owned "$sb"
   dim "adopted $sb: built by an earlier version of this tool, now marked as owned"
