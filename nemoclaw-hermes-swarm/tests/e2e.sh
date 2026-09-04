@@ -305,9 +305,49 @@ if [[ "${TRACING:-on}" == on && "${SWARM_TEST_LIFECYCLE:-on}" == on ]]; then
 fi
 
 # ── 14. image forwarding is opt-in ────────────────────────────────────────────
+# The property lives in the plugin: without with_images nothing crosses, with
+# it exactly the turn's images do. Proved two ways. First, in-sandbox, by
+# calling the plugin's own function against a fake teammate that counts the
+# image parts it receives (no model in the loop, so no soul can add the flag).
+# Second, live: after the reviewer's model handles a photo, the number of
+# results that report a forwarded image never exceeds the number of calls that
+# set the flag. Both Python probes travel as base64 to avoid quoting layers.
 if bot_exists nemoclaw-vision 2>/dev/null && (( ${#BOTS_FOUND[@]} >= 2 )); then
   section "14. image forwarding is opt-in"
   other="${BOTS_FOUND[0]}"; [[ "$other" == nemoclaw-vision ]] && other="${BOTS_FOUND[1]}"
+  osb=$(sandbox_of "$other")
+  probe=$(cat <<'PY'
+import json, sys, threading
+from http.server import BaseHTTPRequestHandler, HTTPServer
+sys.path.insert(0, "/sandbox/.hermes/plugins")
+import teammates.tools as t
+got = []
+class H(BaseHTTPRequestHandler):
+    def do_POST(self):
+        body = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
+        parts = body["messages"][-1]["content"]
+        got.append(sum(1 for p in (parts if isinstance(parts, list) else []) if p.get("type") == "image_url"))
+        self.send_response(200); self.send_header("Content-Type", "application/json"); self.end_headers()
+        self.wfile.write(json.dumps({"choices": [{"message": {"content": "ok"}}], "usage": {"total_tokens": 1}}).encode())
+    def log_message(self, *a): pass
+srv = HTTPServer(("127.0.0.1", 0), H); threading.Thread(target=srv.serve_forever, daemon=True).start()
+port = srv.server_address[1]
+t._load_peers = lambda: {"fake": {"url": "http://127.0.0.1:%d" % port, "note": ""}}
+t._peer_key = lambda n: "k"
+t.remember_turn_images("s", [{"type": "text", "text": "q"}, {"type": "image_url", "image_url": {"url": "data:image/png;base64,AAAA"}}])
+r1 = json.loads(t.message_teammate({"teammate": "fake", "message": "what colour is the attached image?"}, session_id="s"))
+r2 = json.loads(t.message_teammate({"teammate": "fake", "message": "what colour is the attached image?", "with_images": True}, session_id="s"))
+print("default_images_sent", got[0], "default_reported", r1.get("images_forwarded", 0))
+print("optin_images_sent", got[1], "optin_reported", r2.get("images_forwarded", 0))
+PY
+)
+  pb=$(printf '%s' "$probe" | b64)
+  out=$(sbx "$osb" "printf '%s' '$pb' | base64 -d > /sandbox/p14.py && \$H /sandbox/p14.py; rm -f /sandbox/p14.py" 120 | grep -E "^(default|optin)_")
+  check "plugin: default call sends 0 image parts" "$(awk '/^default_images_sent/{print $2}' <<<"$out")" 0
+  check "plugin: default call reports 0 forwarded" "$(awk '/^default_images_sent/{print $4}' <<<"$out")" 0
+  check "plugin: with_images sends 1 image part" "$(awk '/^optin_images_sent/{print $2}' <<<"$out")" 1
+  check "plugin: with_images reports 1 forwarded" "$(awk '/^optin_images_sent/{print $4}' <<<"$out")" 1
+
   img=$(mktemp /tmp/swarm-red.XXXXXX.png)
   python3 - "$img" <<'PY'
 import struct, zlib, sys
@@ -315,16 +355,30 @@ W=H=16; rows=[bytes([0])+bytes([255,0,0])*W for _ in range(H)]
 def ch(t,d): return struct.pack(">I",len(d))+t+d+struct.pack(">I",zlib.crc32(t+d)&0xffffffff)
 open(sys.argv[1],"wb").write(b"\x89PNG\r\n\x1a\n"+ch(b"IHDR",struct.pack(">IIBBBBB",W,H,8,2,0,0,0))+ch(b"IDAT",zlib.compress(b"".join(rows)))+ch(b"IEND",b""))
 PY
-  # default call: no image crosses; the vision bot must say it was not given one
-  nonce=$RANDOM$RANDOM
-  out=$(timeout 300 hermes -p "$other" chat --image "$img" -q "Call tool_call with name message_teammate, arguments teammate=nemoclaw-vision message='probe $nonce: what colour is the attached image? one word'. Do not set with_images. Reply with the raw tool result JSON only." 2>/dev/null | strip_ansi)
-  check "default: images_forwarded absent or 0" "$(grep -q '"images_forwarded": *[1-9]' <<<"$out" && echo forwarded || echo none)" none
-  check "default: vision bot says it was not given an image" "$(grep -qiE "not (given|attached|see|provided|receive)|no image|wasn.t (given|attached|provided)|don.t see an image|cannot see|unable to see" <<<"$out" && echo yes || echo no)" yes
-  # explicit opt-in: the image crosses and the count says so
-  out=$(timeout 300 hermes -p "$other" chat --image "$img" -q "Call tool_call with name message_teammate, arguments teammate=nemoclaw-vision message='probe $nonce-b: what colour is the attached image? one word' with_images=true. Reply with the raw tool result JSON only." 2>/dev/null | strip_ansi)
-  check "with_images: images_forwarded is 1" "$(grep -o '"images_forwarded": *[0-9]*' <<<"$out" | tr -dc '0-9')" 1
-  check "with_images: vision bot saw red" "$(grep -qi 'red' <<<"$out" && echo yes || echo no)" yes
+  T0=$(date +%s); sleep 1
+  timeout 300 hermes -p "$other" chat --image "$img" -q "what colour is this image? ask nemoclaw-vision (probe $RANDOM)" >/dev/null 2>&1
   rm -f "$img"
+  audit_py=$(cat <<'PY'
+import sqlite3, json, sys, re
+since = float(sys.argv[1]); c = sqlite3.connect("/sandbox/.hermes/state.db")
+calls = flagged = forwarded = 0
+for role, content, tools in c.execute("select role,content,tool_calls from messages where timestamp > ? order by id", (since,)):
+    if tools:
+        for t in json.loads(tools):
+            a = t["function"].get("arguments", "{}"); a = json.loads(a) if isinstance(a, str) else a
+            inner = a.get("arguments", a) if isinstance(a, dict) else {}
+            if isinstance(inner, dict) and "teammate" in inner:
+                calls += 1; flagged += 1 if inner.get("with_images") else 0
+    if role == "tool":
+        m = re.search(r'"images_forwarded":\s*(\d+)', content or "")
+        if m and int(m.group(1)) > 0: forwarded += 1
+print("calls", calls, "flagged", flagged, "forwarded_results", forwarded)
+PY
+)
+  ab=$(printf '%s' "$audit_py" | b64)
+  audit=$(sbx "$osb" "printf '%s' '$ab' | base64 -d > /sandbox/a14.py && \$H /sandbox/a14.py $T0; rm -f /sandbox/a14.py" 60 | grep '^calls')
+  check "live: a teammate call was made" "$(awk '{print ($2>0)?"yes":"no"}' <<<"$audit")" yes
+  check "live: forwarded results never exceed flagged calls" "$(awk '{print ($6<=$4)?"yes":"no"}' <<<"$audit")" yes
 fi
 
 printf '\n  ==============================================\n  SUMMARY: %d passed, %d failed\n  ==============================================\n' "$PASS" "$FAIL"
