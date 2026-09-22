@@ -34,6 +34,10 @@ valid_name() {
   local sb="${SANDBOX_PREFIX:-}$1"
   [[ "$1" =~ ^[a-z][a-z0-9-]*$ ]] && [[ "$sb" =~ ^[a-z]([a-z0-9]|-[a-z0-9])*$ ]] && (( ${#sb} <= SANDBOX_NAME_MAX ))
 }
+# For removal: same character rules, no length cap. State for a name that was
+# never creatable (older versions wrote it before OpenShell refused the name)
+# must still be removable, and the name is a path component either way.
+valid_name_loose() { [[ "$1" =~ ^[a-z][a-z0-9-]*$ ]] && [[ "${SANDBOX_PREFIX:-}$1" =~ ^[a-z]([a-z0-9]|-[a-z0-9])*$ ]]; }
 name_rule() { printf 'sandbox name %s%s must be 1-%d chars: lowercase letters, digits, single hyphens; start with a letter, end with a letter or digit' "${SANDBOX_PREFIX:-}" "$1" "$SANDBOX_NAME_MAX"; }
 
 # ── Requirements ─────────────────────────────────────────────────────────────

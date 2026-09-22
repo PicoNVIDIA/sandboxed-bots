@@ -146,7 +146,7 @@ cmd_add() {
 
 cmd_rm() {
   local name="${1:-}" yes="${2:-}"
-  valid_name "$name" || die "usage: swarm rm NAME [--yes]; $(name_rule "$name")"
+  valid_name_loose "$name" || die "usage: swarm rm NAME [--yes]  (lowercase letters, digits, single hyphens)"
   if [[ "$yes" != "--yes" ]]; then
     read -r -p "remove bot $name, its sandbox, profile, and key? [y/N] " a
     [[ "$a" == y || "$a" == Y ]] || { dim "aborted"; return 0; }

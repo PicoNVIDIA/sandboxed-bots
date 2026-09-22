@@ -238,6 +238,8 @@ if [[ "${SWARM_TEST_LIFECYCLE:-on}" == on ]]; then
   # name rule: OpenShell refuses sandbox names over 19 chars; swarm must refuse first and write nothing
   "$SWARM_ROOT/swarm" add nemoclaw-zz-toolongname --role x >/dev/null 2>&1
   check "add: 21-char name refused before any state" "$(test -e "$SWARM_STATE/keys/nemoclaw-zz-toolongname.key" && echo written || echo none)" none
+  # rm must still accept that name: state written by an older version (before the cap) has to be removable
+  check "rm: 21-char name accepted (nothing to remove is fine)" "$("$SWARM_ROOT/swarm" rm nemoclaw-zz-toolongname --yes 2>&1 | grep -c 'must be 1-19')" 0
 
   # add: the new bot exists, and the EXISTING bots were reconciled (soul lists it, gateway restarted)
   before=$(sbx "$(sandbox_of "$anchor")" 'stat -c %Y /sandbox/.hermes/SOUL.md' 30 | tail -1)
