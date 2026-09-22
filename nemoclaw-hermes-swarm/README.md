@@ -34,7 +34,7 @@ handoff between them crossed a sandbox boundary.
 | You will get | Two bots in two sandboxes, a Hermes Desktop group chat that addresses them by name, NeMo Relay traces from every turn at one collector, and a 50-check live suite. The same `swarm up` restores the fleet after a reboot. Two optional bots add image and video input. |
 | Runs on | A Linux host, or macOS with Colima. No GPU is needed unless you run the video example. |
 | Requires | Docker, OpenShell, NemoClaw, and Hermes 0.21 on the host, plus an OpenAI-compatible inference endpoint and its API key. `./swarm doctor` reports what is missing before anything is built. |
-| Verified on | The base team on a fresh Ubuntu 24.04 VM from the public installers (78 of 78 checks, live handoff; Hermes 0.21.4, OpenShell 0.0.116, NemoClaw 0.0.124) and on macOS 26 with Colima. The image and video bots on one Linux host with an RT-VLM container on a data-center GPU: 119 of 119 checks, both handoffs three times in a row. The multimodal examples have not yet been set up from scratch on a second machine. |
+| Verified on | The base team on a fresh Ubuntu 24.04 VM from the public installers (78 of 78 checks, live handoff; Hermes 0.21.4, OpenShell 0.0.116, NemoClaw 0.0.124). Before the move to one host gateway: macOS 26 with Colima (50 of 50), and the image and video bots on one Linux host with an RT-VLM container on a data-center GPU (119 of 119, both handoffs three times in a row). Neither has been re-run on the current version, and the multimodal examples have not yet been set up from scratch on a second machine. |
 | Evidence level | live end-to-end for the base team; integration for the multimodal examples |
 | Support and maturity | Best-effort community support under the repository [support policy](../../../../SUPPORT.md). |
 | External access, data, and actions | The image build fetches Hermes from `github.com` and `hermes-agent.nousresearch.com`. Prompts and tool output go to the inference endpoint you configure. The researcher preset allows egress to `github.com` and NVIDIA documentation hosts; the reviewer preset allows none. With a LangSmith key, traces are also exported there. The video example pulls RT-VLM from `ghcr.io` and its weights from NGC. On the host, `swarm` creates and removes sandboxes, containers, and Hermes profiles. |
@@ -148,7 +148,7 @@ brings its own endpoint.
 
 ```bash
 sudo apt-get install -y binutils
-curl -fsSL https://nvidia.com/nemoclaw.sh | NEMOCLAW_AGENT=hermes NEMOCLAW_NON_INTERACTIVE=1 NEMOCLAW_ACCEPT_THIRD_PARTY_SOFTWARE=1 bash
+curl -fsSL https://www.nvidia.com/nemoclaw.sh | NEMOCLAW_AGENT=hermes NEMOCLAW_NON_INTERACTIVE=1 NEMOCLAW_ACCEPT_THIRD_PARTY_SOFTWARE=1 bash
 ```
 
 `NEMOCLAW_ACCEPT_THIRD_PARTY_SOFTWARE=1` is the non-interactive form of the
