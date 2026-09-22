@@ -34,7 +34,7 @@ handoff between them crossed a sandbox boundary.
 | You will get | Two bots in two sandboxes, a Hermes Desktop group chat that addresses them by name, NeMo Relay traces from every turn at one collector, and a 50-check live suite. The same `swarm up` restores the fleet after a reboot. Two optional bots add image and video input. |
 | Runs on | A Linux host, or macOS with Colima. No GPU is needed unless you run the video example. |
 | Requires | Docker, OpenShell, NemoClaw, and Hermes 0.21 on the host, plus an OpenAI-compatible inference endpoint and its API key. `./swarm doctor` reports what is missing before anything is built. |
-| Verified on | The base team on a fresh Ubuntu 24.04 VM from the public installers (50 of 50 checks, live handoff) and on macOS 26 with Colima. The image and video bots on one Linux host with an RT-VLM container on a data-center GPU: 119 of 119 checks, both handoffs three times in a row. The multimodal examples have not yet been set up from scratch on a second machine. |
+| Verified on | The base team on a fresh Ubuntu 24.04 VM from the public installers (78 of 78 checks, live handoff; Hermes 0.21.4, OpenShell 0.0.116, NemoClaw 0.0.124) and on macOS 26 with Colima. The image and video bots on one Linux host with an RT-VLM container on a data-center GPU: 119 of 119 checks, both handoffs three times in a row. The multimodal examples have not yet been set up from scratch on a second machine. |
 | Evidence level | live end-to-end for the base team; integration for the multimodal examples |
 | Support and maturity | Best-effort community support under the repository [support policy](../../../../SUPPORT.md). |
 | External access, data, and actions | The image build fetches Hermes from `github.com` and `hermes-agent.nousresearch.com`. Prompts and tool output go to the inference endpoint you configure. The researcher preset allows egress to `github.com` and NVIDIA documentation hosts; the reviewer preset allows none. With a LangSmith key, traces are also exported there. The video example pulls RT-VLM from `ghcr.io` and its weights from NGC. On the host, `swarm` creates and removes sandboxes, containers, and Hermes profiles. |
@@ -100,7 +100,7 @@ and its teammate. That difference is one file, `policies/nemoclaw-researcher.yam
 and the reviewer not having one. Neither bot can reach your laptop, the host's
 loopback, or the other's files.
 
-I don't want you to take that on faith. `./swarm test` runs 50 live checks.
+I don't want you to take that on faith. `./swarm test` runs 78 live checks.
 One reads `/proc/self/ns/pid` from inside each sandbox and fails if two bots
 share a value. One asks a bot for `hostname` through the chat and fails if the
 answer is the host's. One plants a secret where only the researcher can read it,
@@ -207,8 +207,9 @@ image build. Prints one line per step and ends with a status ladder.
 ./swarm up
 ```
 
-**8. Prove it.** 50 live checks: namespaces differ, egress is denied, the
-handoff crosses the boundary and nowhere else. Expect `50 passed, 0 failed`.
+**8. Prove it.** 78 live checks: namespaces differ, egress is denied, the
+handoff crosses the boundary and nowhere else, one host gateway serves every
+bot. Expect `78 passed, 0 failed` for the two-bot team; about 13 minutes.
 
 ```bash
 ./swarm test
@@ -326,7 +327,7 @@ After `./swarm up`, run the suite from the host:
 **Expected result:**
 
 ```text
-  SUMMARY: 50 passed, 0 failed
+  SUMMARY: 78 passed, 0 failed
 ```
 
 With the vision and video bots added, the suite has 119 checks. The last
@@ -438,7 +439,7 @@ souls/                     roles: researcher, reviewer, critic, qa
 plugins/teammates/         message_teammate / list_teammates
 examples/                  optional: a vision bot, a VSS video bot, RT-VLM compose
 observability/             Relay config + collector config
-tests/                     e2e.sh (50 live checks), presubmit.sh
+tests/                     e2e.sh (78 live checks), presubmit.sh
 skill/                     hand this to your own agent
 docs/                      see below
 SECURITY.md                what's protected, what isn't, what you hold
