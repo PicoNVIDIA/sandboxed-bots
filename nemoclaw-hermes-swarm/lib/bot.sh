@@ -11,7 +11,9 @@
 # sandboxes on the same host are never touched.
 bot_list() {
   local f
-  for f in "$SWARM_STATE"/keys/*.key; do [[ -f "$f" ]] && basename "$f" .key; done | sort
+  # `if`, not `&&`: with no keys the loop must still return 0, or
+  # `set -euo pipefail` turns `swarm down --all` into a silent exit 1.
+  for f in "$SWARM_STATE"/keys/*.key; do if [[ -f "$f" ]]; then basename "$f" .key; fi; done | sort
 }
 bot_exists() { [[ -s "$(bot_key_file "$1")" ]] && sandbox_exists "$(sandbox_of "$1")"; }
 # A sandbox with our name that we did not create. Restore and destroy refuse it.
