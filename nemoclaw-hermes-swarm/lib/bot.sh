@@ -291,6 +291,7 @@ bot_destroy() {
   fi
   host_profile_remove "$name"
   rm -f "$(bot_key_file "$name")" "$(bot_port_file "$name")" \
+        "$SWARM_STATE/souls/$name.md" \
         "$SWARM_STATE/policies/$sb"*.yaml "$SWARM_STATE/policies/"*"-peer-$name.yaml" \
         "$SWARM_STATE/relay/$name."* "$SWARM_STATE/logs/$name-"*.log "$SWARM_STATE/owned/$sb"
   ok "bot $name removed"

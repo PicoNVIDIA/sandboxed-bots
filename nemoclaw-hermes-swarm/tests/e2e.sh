@@ -287,6 +287,7 @@ EOS
   "$SWARM_ROOT/swarm" rm "$tb" --yes >/dev/null 2>&1
   check "rm: $tb gone" "$(sandbox_exists "$tsb" && echo present || echo gone)" gone
   check "rm: key removed" "$(test -s "$fk" && echo yes || echo no)" no
+  check "rm: role soul removed" "$(test -e "$SWARM_STATE/souls/$tb.md" && echo yes || echo no)" no
   check "rm: $anchor peers no longer include $tb" "$(mesh_peers_of "$anchor" | grep -cx "$tb")" 0
   check "rm: ownership marker removed" "$(test -e "$SWARM_STATE/owned/$tsb" && echo yes || echo no)" no
 else
