@@ -117,7 +117,7 @@ cmd_up() {
 
 cmd_add() {
   local name="${1:-}"; shift || true
-  valid_name "$name" || die "usage: swarm add NAME [--soul FILE | --role \"text\"]  (lowercase, digits, dashes)"
+  valid_name "$name" || die "usage: swarm add NAME [--soul FILE | --role \"text\"]; $(name_rule "$name")"
   local soul="" role=""
   while (($#)); do
     case "$1" in
@@ -146,7 +146,7 @@ cmd_add() {
 
 cmd_rm() {
   local name="${1:-}" yes="${2:-}"
-  valid_name "$name" || die "usage: swarm rm NAME [--yes]"
+  valid_name "$name" || die "usage: swarm rm NAME [--yes]; $(name_rule "$name")"
   if [[ "$yes" != "--yes" ]]; then
     read -r -p "remove bot $name, its sandbox, profile, and key? [y/N] " a
     [[ "$a" == y || "$a" == Y ]] || { dim "aborted"; return 0; }

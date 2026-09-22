@@ -232,8 +232,12 @@ fi
 # SWARM_TEST_LIFECYCLE=off (it costs about four minutes).
 if [[ "${SWARM_TEST_LIFECYCLE:-on}" == on ]]; then
   section "12. lifecycle"
-  tb=nemoclaw-zz-lifecycle; tsb=$(sandbox_of "$tb"); anchor="${BOTS_FOUND[0]}"
+  tb=nemoclaw-zz-life; tsb=$(sandbox_of "$tb"); anchor="${BOTS_FOUND[0]}"   # 16 chars; OpenShell caps sandbox names at 19
   bot_exists "$tb" 2>/dev/null && "$SWARM_ROOT/swarm" rm "$tb" --yes >/dev/null 2>&1
+
+  # name rule: OpenShell refuses sandbox names over 19 chars; swarm must refuse first and write nothing
+  "$SWARM_ROOT/swarm" add nemoclaw-zz-toolongname --role x >/dev/null 2>&1
+  check "add: 21-char name refused before any state" "$(test -e "$SWARM_STATE/keys/nemoclaw-zz-toolongname.key" && echo written || echo none)" none
 
   # add: the new bot exists, and the EXISTING bots were reconciled (soul lists it, gateway restarted)
   before=$(sbx "$(sandbox_of "$anchor")" 'stat -c %Y /sandbox/.hermes/SOUL.md' 30 | tail -1)

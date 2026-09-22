@@ -296,6 +296,10 @@ reviewer never sees the researcher's files, its key, or its shell.
 ./swarm down --yes                                            # everything, sandboxes included
 ```
 
+Bot names are sandbox names, and OpenShell caps those at 19 characters
+(lowercase letters, digits, single hyphens). `nemoclaw-researcher` is exactly
+19. `swarm add` refuses a longer name before it creates anything.
+
 Each bot's reach is its own file. `policies/<bot>.yaml` is applied when that
 bot is created; the researcher ships with one for GitHub and docs.nvidia.com and
 the reviewer deliberately has none. To open a door on a running bot:
