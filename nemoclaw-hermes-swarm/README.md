@@ -132,7 +132,7 @@ Two ways to run it. Same command, same bots, same tests.
 | **Local** | your Mac or Linux box, sandboxed, next to Desktop | trying it, demos, one person |
 | **Remote** | a Linux host you SSH to | a team, GPUs on the host, always-on bots |
 
-Either way you need Docker, OpenShell, NemoClaw, Hermes 0.21, and an
+Either way you need Docker, OpenShell, NemoClaw, Hermes 0.21.4 or newer, and an
 OpenAI-compatible model endpoint. Model serving is out of scope; the host does
 not need a GPU if the model is somewhere else.
 
@@ -140,13 +140,20 @@ Eight commands, one at a time. Each does one thing, and you can stop after
 any of them and nothing is half-built. This is the sequence we ran on a blank
 Ubuntu 24.04 VM.
 
-**1. Install NemoClaw, OpenShell, and Docker.** One installer. It stops at its
-own "configure inference provider" step because you have no NVIDIA key in it
-yet; that is fine, `swarm` brings its own endpoint.
+**1. Install NemoClaw, OpenShell, and Docker.** One installer. On a fresh
+Ubuntu it needs `binutils` first (it checks OpenShell's binary with `strings`
+and stops if that is missing). It ends at its own "configure inference
+provider" step because you have no NVIDIA key in it yet; that is fine, `swarm`
+brings its own endpoint.
 
 ```bash
-curl -fsSL https://nvidia.com/nemoclaw.sh | NEMOCLAW_AGENT=hermes NEMOCLAW_NON_INTERACTIVE=1 bash
+sudo apt-get install -y binutils
+curl -fsSL https://nvidia.com/nemoclaw.sh | NEMOCLAW_AGENT=hermes NEMOCLAW_NON_INTERACTIVE=1 NEMOCLAW_ACCEPT_THIRD_PARTY_SOFTWARE=1 bash
 ```
+
+`NEMOCLAW_ACCEPT_THIRD_PARTY_SOFTWARE=1` is the non-interactive form of the
+installer's third-party software prompt (Docker, Node); read the notice it
+prints before you set it.
 
 **2. Install Hermes on the host.** Desktop talks to the bots through a thin
 Hermes profile per bot, so the host needs Hermes too.
@@ -159,15 +166,14 @@ Open a new login shell here so your user picks up the `docker` group and
 `~/.local/bin` is on your PATH. On a Mac, also start Colima:
 `colima start --cpu 6 --memory 14`.
 
-**3. Get the code.** Clone the repository this README is in and change into
-this example's directory. Reading this on GitHub, that is the path in the
-address bar; the two published locations are the NemoClaw Community catalog
-under `examples/recipes/nvidia/sandboxed-hermes-bots/` and the upstream at
-`PicoNVIDIA/sandboxed-bots` under `nemoclaw-hermes-swarm/`. Run what you
+**3. Get the code.** This example is published in two places with the same
+contents: upstream at `PicoNVIDIA/sandboxed-bots` under
+`nemoclaw-hermes-swarm/`, and in the NemoClaw Community catalog under
+`examples/recipes/nvidia/sandboxed-hermes-bots/`. Clone one and run what you
 cloned; do not mix a README from one with a tree from the other.
 
 ```bash
-git clone <this repository> && cd <this example directory>
+git clone https://github.com/PicoNVIDIA/sandboxed-bots && cd sandboxed-bots/nemoclaw-hermes-swarm
 ```
 
 **4. Make your config.** The example already points at the NVIDIA inference

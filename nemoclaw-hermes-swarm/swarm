@@ -184,6 +184,9 @@ cmd_down() {
   done
   [[ -z "$all" && -n "$extra" ]] && dim "kept (not in BOTS): $extra; use swarm rm NAME or swarm down --all"
   (( failed )) && die "one or more bots were not fully removed; their state was kept for recovery"
+  # The one host gateway is the default profile's process, shared with anything
+  # else this user runs through Hermes; leave it up. Say so once.
+  [[ "$HOST_GATEWAY" == on ]] && host_gateway_running && dim "host gateway left running (it is the default profile's; stop with: hermes gateway stop)"
   return 0
 }
 
