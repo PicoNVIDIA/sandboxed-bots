@@ -6,7 +6,7 @@ over HTTP but is invisible in Desktop) looks like anything but a gateway problem
 
 ## One request
 
-<p align="center"><img src="img/01-one-request.svg" alt="One request through Desktop, the host gateway, the sandbox, and Relay" width="100%"></p>
+<p align="center"><img src="img/01-one-request.png" alt="One request through Desktop, the host gateway, the sandbox, and Relay" width="100%"></p>
 
 You type `@nemoclaw-researcher …` in a Desktop room. Desktop is connected to the
 host over SSH. On the host there's a thin Hermes profile for each bot whose only
@@ -22,7 +22,7 @@ policy. `./swarm test` checks this the blunt way: it asks a bot to run
 
 ## Inside a sandbox
 
-<p align="center"><img src="img/03-inside-a-sandbox.svg" alt="What a sandbox can see and reach" width="100%"></p>
+<p align="center"><img src="img/03-inside-a-sandbox.png" alt="What a sandbox can see and reach" width="100%"></p>
 
 An OpenShell sandbox is a container with its own PID, network, mount, and IPC
 namespaces, a Landlock-restricted filesystem, and an egress proxy that denies
@@ -41,14 +41,16 @@ different reach is the whole idea.
 
 ## The two gateways
 
-Every bot runs two Hermes gateway processes with different jobs.
+Two Hermes gateways are involved in every bot, with different jobs: one on
+the host, shared by every bot, and one inside each sandbox.
 
 ```
                  ┌──────────────────────────────────────────────────────┐
                  │ HOST                                                 │
-  Desktop ──────▶│  host gateway   hermes -p nemoclaw-researcher gateway run
-  Bots roster    │    makes `hermes profile list` say "running"         │
-  lists THIS     │    the only thing the roster sees                    │
+  Desktop ──────▶│  host gateway   hermes gateway run   (one per host)  │
+  Bots roster    │    serves every bot profile; makes `hermes profile   │
+  lists THIS     │    list` say "running"; the only thing the roster sees
+                 │    profile nemoclaw-researcher:                      │
                  │    model.base_url = http://172.18.0.1:8477/v1        │
                  │                            │                         │
                  │  bridge forward            │ openshell forward       │
@@ -71,13 +73,13 @@ That one trick is what makes `hermes -p nemoclaw-researcher chat` and a Desktop
 
 | You see | It means |
 |---|---|
-| api_server 200, `hermes -p X chat` works, X missing from the roster | host gateway is down; `./swarm up` restarts it |
+| api_server 200, `hermes -p X chat` works, X missing from the roster | the host gateway is down, or it has not picked X up yet; `./swarm up` restarts it |
 | `hermes profile list` says running, chat hangs | in-sandbox gateway or model endpoint is down; `./swarm status` |
 | both fine, Desktop room dead | Desktop's backend is stale; restart the app |
 
 ## A handoff
 
-<p align="center"><img src="img/04-handoff.svg" alt="A handoff between two sandboxed bots" width="100%"></p>
+<p align="center"><img src="img/04-handoff.png" alt="A handoff between two sandboxed bots" width="100%"></p>
 
 Three things let a message cross from one sandbox to another, and `./swarm add`
 sets up all three, both directions, for every pair:
@@ -95,7 +97,7 @@ with no Desktop attached.
 
 ## Tracing
 
-<p align="center"><img src="img/05-relay-trace.svg" alt="Relay spans from sandbox to collector" width="100%"></p>
+<p align="center"><img src="img/05-relay-trace.png" alt="Relay spans from sandbox to collector" width="100%"></p>
 
 Relay is part of Hermes; there's nothing to install. `./swarm up` writes one
 `relay-plugins.toml` per bot, points Hermes at it, allows egress to the
@@ -127,5 +129,5 @@ gotchas that cost us an afternoon.
 | inference key | `~/.secrets/inference.key`, mode 600 | `/sandbox/.hermes/.env` |
 | rendered policies | `~/.swarm/policies/` | applied to the sandbox |
 | relay config | `~/.swarm/relay/<bot>.relay-plugins.toml` | `/sandbox/.hermes/relay-plugins.toml` |
-| logs | `~/.swarm/logs/<bot>-{gateway,forward,host-gateway}.log` | `/sandbox/.hermes/logs/` |
+| logs | `~/.swarm/logs/<bot>-{gateway,forward}.log`, `~/.swarm/logs/host-gateway.log` | `/sandbox/.hermes/logs/` |
 | LangSmith key (optional) | `~/.langsmith/api_key`, mode 600, collector env only | never |

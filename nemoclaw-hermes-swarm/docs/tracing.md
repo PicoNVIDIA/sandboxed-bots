@@ -5,9 +5,9 @@ gives you one: a span for every turn, every model call, every tool call, with
 inputs, outputs and token counts, tagged by bot. Relay ships inside Hermes, so
 this is a config file per bot and nothing to install. `./swarm up` turns it on.
 
-<p align="center"><img src="img/05-relay-trace.svg" alt="Relay spans from the sandbox to a collector" width="100%"></p>
+<p align="center"><img src="img/05-relay-trace.png" alt="Relay spans from the sandbox to a collector" width="100%"></p>
 
-## Why I bother
+## What a trace catches
 
 Four things went wrong while we built this, and a trace exposes each one in
 about a second:
@@ -42,7 +42,12 @@ Once per host it starts the collector from
 `LANGSMITH_PROJECT`. If not, they go to the collector's debug log and counters,
 which is enough to prove the pipeline works.
 
-`TRACING=off` in `swarm.env` turns the whole thing off.
+`TRACING=off` in `swarm.env`, then `./swarm up`, turns the whole thing off: the
+Relay configuration is removed from every bot and each gateway restarted, and
+the collector container is removed. The OTLP egress rule stays in each policy
+because OpenShell policies are add-only; with Relay off, nothing uses it. Spans
+already exported to LangSmith are outside this tool's reach. Setting `TRACING`
+in the shell environment does nothing: `swarm.env` is read after it and wins.
 
 ## Checking it works
 
@@ -68,7 +73,7 @@ Relay fails open. A missing or malformed `relay-plugins.toml` logs one
 warning and carries on with tracing off. You get a perfectly healthy bot that
 exports nothing. Never assume it activated; read the counters.
 
-The env var is read once, at process start. Write the TOML or the variable
+The environment variable is read once, at process start. Write the TOML or the variable
 while the gateway is running and nothing happens. `swarm` restarts the gateway
 every time it touches either.
 

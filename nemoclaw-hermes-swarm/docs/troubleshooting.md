@@ -43,7 +43,7 @@ instead of a bare error. A bot whose endpoint is down is not a broken bot.
 a quit client, stale backends after a gateway restart, routing that reverted.
 Every in-sandbox gateway restart invalidates the Desktop's backend, so after
 `./swarm up` on a rebooted host, restart the app too. And don't restart gateways
-five minutes before a demo. I have done this. It goes badly.
+five minutes before a demonstration. I have done this. It goes badly.
 
 ## A bot receives nothing in a group chat
 
@@ -99,12 +99,14 @@ backend belongs to the Desktop session, not to the swarm.
 
 Works from the CLI, api_server returns 200, `hermes profile list` says `stopped`.
 
-Two gateways per bot: one inside the sandbox serving the api_server, one on the
-host that makes the profile report `running`. The roster lists only the second.
-`./swarm up` starts it; `./swarm status` checks it. `hermes profile list`
-computes `running` from `gateway.lock` plus a `gateway.pid` whose recorded start
-time matches the live process, so `kill -0 $(cat gateway.pid)` is not enough,
-and `gateway.pid` is JSON, not a bare PID.
+Two gateways are involved: one inside the sandbox serving the api_server, and
+one on the host, shared by every bot, that makes each bot profile report
+`running`. The roster lists only the second. Since Hermes 0.21.4 a named
+profile cannot run a gateway of its own; the default profile's gateway serves
+them all and records who it serves in `~/.hermes/gateway_state.json` under
+`served_profiles`. `./swarm up` starts it; `./swarm status` checks it; a profile
+created while it runs is picked up within a few seconds. If a profile stays
+`stopped`, read `~/.swarm/logs/host-gateway.log`, then `hermes gateway restart`.
 
 ## Desktop shows no bots at all
 
@@ -223,7 +225,7 @@ running over SSH.
 
 ## Multimodal handoffs
 
-Everything in this section came from rehearsing the two-beat demo in
+Everything in this section came from rehearsing the two-beat demonstration in
 `examples/README.md` until three passes in a row were clean. Each entry is a
 thing that looked like it worked and did not.
 
@@ -264,8 +266,9 @@ not given one. If you write your own vision soul, keep that line.
 
 ## Traps in your own diagnostics
 
-- `gateway.pid` holds JSON, so `ps -p $(cat gateway.pid)` reports every gateway
-  dead. Ask `hermes profile list` instead.
+- Bot profiles have no `gateway.pid` of their own; the one host gateway's pid is
+  in `~/.hermes/gateway_state.json`. Ask `hermes profile list` instead of
+  reading files.
 - Nested shell quoting mangles keys. Read them from files inside a script and
   never interpolate through `ssh '… "… \"…\" …" …'`. Same for `python -c`
   through `sandbox exec`; feed python a heredoc on stdin.
@@ -281,7 +284,7 @@ not given one. If you write your own vision soul, keep that line.
 - Never background a remote command whose first line is destructive.
 - Never `docker rm` with a broad filter or `ancestor=`.
 - Never bind a probe to a port a working service owns. The victim exits on its
-  next restart with no obvious connection to what you changed.
+  next restart with no visible connection to what you changed.
 - `swarm` only touches sandboxes it has a key file for, profiles by those names,
   and its own collector. Other people's sandboxes on the
   same host are invisible to it.

@@ -1,8 +1,8 @@
 # Two more bots: one that can see, one that can watch video
 
 The default swarm is two text-only bots. These two are what we added when a
-colleague asked whether the demo could do more than text. You don't need them.
-They're here because the way they work is the point of the whole repo, made
+colleague asked whether the example could do more than text. You don't need them.
+They're here because the way they work is the point of the whole repository, made
 visible: only one bot's model accepts images, only one bot's egress reaches
 the video model, and everyone else gets there by asking in plain language
 across a sandbox boundary.
@@ -77,8 +77,10 @@ address on GPU 1. Edit `VSS_GPU` if that is not the free one.
 cp examples/vss/.env.example examples/vss/.env
 ```
 
-**3. Start RT-VLM.** The image is public; the first start downloads about
-16 GB of model weights with your NGC key, 10 to 20 minutes.
+**3. Start RT-VLM.** The image is public and pinned by digest to the build we
+tested. The first start downloads about 16 GB of model weights with your NGC
+key into a named Docker volume, 10 to 20 minutes. The container gets the key,
+one GPU, host IPC, and the bridge port; read `compose.yml` before you run it.
 
 ```bash
 NGC_API_KEY=$(cat ~/.secrets/ngc.key) docker compose -f examples/vss/compose.yml up -d
@@ -99,10 +101,12 @@ VSS_BASE_URL=http://host.openshell.internal:8018
 ```
 
 **6. Add the bot.** Installs the two tools and the skill into that one
-sandbox, applies a policy that allows egress to port 8018 on the bridge and
-nothing else, and copies the clips from `examples/videos/` to
-`/sandbox/videos`. The other bots' policies do not change; `curl` to 8018
-from the reviewer's sandbox gets a 403.
+sandbox, applies a policy that allows egress to the port in `VSS_BASE_URL` on
+the bridge and nothing else, copies the clips from `examples/videos/` to
+`/sandbox/videos`, and updates the other bots so they know a teammate can
+watch video. Their policies do not change; `curl` to that port from the
+reviewer's sandbox gets a 403. If you changed `VSS_PORT` in step 2, use the
+same port in step 5; the policy is rendered from it.
 
 ```bash
 ./swarm add nemoclaw-vss
@@ -120,7 +124,7 @@ Your own footage, three ways:
   Desktop stages the file on the host; a small host-side plugin (installed in
   every bot's shim when a vss bot exists) uploads it into the vss sandbox's
   `/sandbox/videos` before the turn is forwarded and tells the bot the name.
-  So `what happens in this clip?` with `dock-inspection.mp4` attached just
+  So `what happens in this clip?` with `dock-inspection.mp4` attached
   works, from the reviewer or anyone else. Videos only, 200 MB cap, one
   target sandbox, and the file's bytes are never read on the host.
 - **Ship it with the bot.** Put files in `examples/videos/` (or point
@@ -130,7 +134,7 @@ Your own footage, three ways:
 Clips up to about a minute and 40 MB travel to RT-VLM inline; longer ones
 need a URL.
 
-## The demo
+## The demonstration
 
 Make a group chat with `nemoclaw-reviewer`, `nemoclaw-vision`, and
 `nemoclaw-vss`. Both prompts go to the reviewer, the bot that can neither see
@@ -145,9 +149,10 @@ reviewer relays them with attribution and adds its own read. About 20 seconds.
 ```
 
 **Image.** Attach any photo (the paperclip in the composer), then ask. The
-reviewer's model gets the pixels but cannot read them, forwards the picture to
-the vision bot with the question, and writes its answer from what comes back.
-20 to 40 seconds.
+reviewer receives the image but its model cannot read it. Its soul tells it to
+ask the vision bot with `with_images` set, which sends the picture along with
+the question; the tool result says how many images went. The reviewer writes
+its answer from what comes back. 20 to 40 seconds.
 
 ```
 @nemoclaw-reviewer what safety issues do you see in this photo?
@@ -161,9 +166,10 @@ name. Same 20 seconds plus the upload.
 @nemoclaw-reviewer what happens in this clip?
 ```
 
-Three bots, three sandboxes, two handoffs across the boundary. Only the bot
-whose model can see ever gets an image; only the bot whose policy reaches
-RT-VLM ever gets a video. Everyone else asks.
+Three bots, three sandboxes, two handoffs across the boundary. The image
+reaches the vision bot because the reviewer chose to send it on that one call;
+`message_teammate` forwards nothing unless asked. The video reaches the vss
+bot's sandbox as a file, and only the vss bot's policy reaches RT-VLM.
 
 We ran each of these three times in a row through the same path Desktop uses
 before writing this section, reading the tool trace in every sandbox each
